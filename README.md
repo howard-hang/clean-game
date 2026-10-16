@@ -2,6 +2,14 @@
 
 Unity casual cleaning game. Controls: 清洗/旋转 modes, water gun / sponge.
 
+## v1.4.0 — 考古生物
+- 新主题 `fossil` / 考古生物：清理远古化石骨架（沙赭强调色，发掘现场的暖尘天色）
+- 6 关：霸王龙头骨 `trex_skull`、三角龙头骨 `triceratops_skull`、剑龙背板 `stego_plate`、菊石 `ammonite`、三叶虫 `trilobite`、猛犸象牙 `mammoth_tusk`
+- 化石主题工具：考古凿 `dig_chisel`（较强，石屑扬尘，无水柱）/ 考古刷 `dig_brush`（较柔，尘土与干泡沫）
+- 其它主题仍是 高压水枪 / 泡泡海绵；清洗与旋转继续互斥
+- 房间是沙地发掘现场（方格网、帆布帐篷、石箱），沉积物为黏土褐色
+- 仓库里还没有这些 FBX 时，用同名程序化占位模型进关；以后把 `Assets/Resources/<id>.fbx` 和 `<id>_base.png` 放进去就会自动换上
+
 ## v1.3.0 — Bathroom model upgrade
 - AI concept four-view sheets under `refs/bath/<id>/fourview.jpg` (Flux via Pollinations)
 - Blender orthographic four-views `refs/bath/<id>/blender_fourview.jpg`
@@ -11,45 +19,48 @@ Unity casual cleaning game. Controls: 清洗/旋转 modes, water gun / sponge.
 ## Download
 See [Releases](https://github.com/howard-hang/clean-game/releases)
 
-# 娲楁礂鏇磋В鍘?(Clean Game) v1.1
+# 洗洗更解压 (Clean Game) v1.4
 
-瑙ｅ帇娓呮磥灏忔父鎴忥細鍐叉帀娉ュ反銆佹悡鍑烘场娉°€佹礂鍒伴棯闂彂浜€?
+解压清洁小游戏：冲掉泥巴、搓出泡泡，洗到闪闪发亮。考古主题则是扫开沉积物、凿出骨头。
 
-## 涓婚涓庡叧鍗★紙鍏?4 涓婚 路 24 鍏筹級
+## 主题与关卡（共 5 主题 · 30 关）
 
-| 涓婚 | 鐗╁搧 |
+| 主题 | 物品 |
 |------|------|
-| 娴村 | 闈掕姳鐩樸€佸皬榛勯腑銆佽偉鐨傘€佹礂鍙戠摱銆佺墮鍒锋澂銆佷笣鐡滅粶 |
-| 鍘ㄦ埧 | 骞冲簳閿呫€佽尪澹躲€侀┈鍏嬫澂銆佸ぇ纰椼€佺牕鏉裤€佹按澹?|
-| 杞﹀簱 | 宸ュ叿绠便€佽疆鑳庛€佹补妗躲€佸ご鐩斻€佹満娌瑰６銆佹壋鎵?|
-| 鑺卞洯 | 鑺辩泦銆佹磼姘村６銆佸皬鐭汉銆侀笩灞嬨€侀潚铔欍€佹墜鎺ㄨ溅 |
+| 浴室 | 青花盘、小黄鸭、肥皂、洗发瓶、牙刷杯、丝瓜络 |
+| 厨房 | 平底锅、茶壶、马克杯、大碗、砧板、水壶 |
+| 车库 | 工具箱、轮胎、油桶、头盔、机油壶、扳手 |
+| 花园 | 花盆、洒水壶、小矮人、鸟屋、青蛙、手推车 |
+| 考古生物 | 霸王龙头骨、三角龙头骨、剑龙背板、菊石、三叶虫、猛犸象牙 |
 
-## 鎿嶄綔锛坴1.2 浜掍笉鍐茬獊锛?
+化石关的工具是 **考古凿 / 考古刷**（道具 id：`dig_chisel` / `dig_brush`）。凿更有力，打出石屑和扬尘，不喷水；刷更轻，带尘土和干泡沫。浴室、厨房、车库、花园仍是 **高压水枪 / 泡泡海绵**。
 
-搴曢儴鍏堥€夋ā寮忥紝鍐嶅崟鎸囨嫋鍔ㄢ€斺€?*涓€绉嶆墜鍔垮彧鍋氫竴浠朵簨**锛?
+## 操作（v1.2 互不冲突）
 
-- **娓呮礂妯″紡**锛氬崟鎸囧湪鐗╀綋涓婃嫋鍔ㄦ竻娲侊紱鍙€夈€岄珮鍘嬫按鏋?/ 娉℃场娴风坏銆?
-- **鏃嬭浆妯″紡**锛氬崟鎸囨嫋鍔ㄥ彧杞墿浣擄紝**涓嶄細娓呮磥**
-- **鍙屾寚寮€鍚?/ 婊氳疆**锛氱缉鏀撅紙鐩告満浣嶇疆鍥哄畾锛屽彧鏀硅繙杩戯級
-- **鍙抽敭鎷栧姩锛堢數鑴戯級**锛氶殢鏃舵棆杞紝浠庝笉娓呮磥
-- 蹇嵎閿細\Q\ 娓呮礂 / \E\ 鏃嬭浆 / \ \ 鍒囨崲宸ュ叿
+底部先选模式，再单指拖动——**一种手势只做一件事**：
 
-## 宸ョ▼
+- **清洗模式**：单指在物体上拖动清洁；可选「高压水枪 / 泡泡海绵」，化石主题则是「考古凿 / 考古刷」
+- **旋转模式**：单指拖动只转物体，**不会清洁**
+- **双指开合 / 滚轮**：缩放（相机位置固定，只改远近）
+- **右键拖动（电脑）**：随时旋转，从不清洁
+- 快捷键：`Q` 清洗 / `E` 旋转 / `1` `2` 切换工具
 
-- Windows锛歎nity **6000.3.26f1**锛屾墦寮€鏈粨搴擄紝鑿滃崟鎴?`BuildScript.Win`
-- Android锛歎nity **2022.3.58f1c1**锛圲nity 6 Android 妯″潡褰撳墠 CDN 404锛夛紝鐢?`clean-game-android` 鍚屾簮宸ョ▼ `BuildScript.Android`
-- 妯″瀷锛歚make_assets.py` + Blender 5.x 鎵瑰鐞嗙儤鐒?
+## 工程
+
+- Windows：Unity **6000.3.26f1**，打开本仓库，菜单或 `BuildScript.Win`
+- Android：Unity **2022.3.58f1c1**（Unity 6 Android 模块当前 CDN 404），用 `clean-game-android` 同源工程 `BuildScript.Android`
+- 模型：`make_assets.py` + Blender 5.x 批处理烘焙
+- 化石模型若尚未导入，运行时使用 `FossilPlaceholders` 占位，资源名与上表 mesh id 一致
 
 ```bash
 blender -b -P make_assets.py -- Assets/Resources
 ```
 
-## 涓嬭浇
+## 下载
 
-- 婧愮爜锛歔GitHub](https://github.com/howard-hang/clean-game)
-- Android APK锛氳 [Releases](https://github.com/howard-hang/clean-game/releases)
+- 源码：[GitHub](https://github.com/howard-hang/clean-game)
+- Android APK：见 [Releases](https://github.com/howard-hang/clean-game/releases)
 
-## 璇存槑
+## 说明
 
-璋冭瘯绛惧悕 APK锛屽彲渚ц浇锛涙ā鍨嬩负绋嬪簭鍖?Blender 椋庢牸鍖栬祫浜э紝閫傚悎绉诲姩绔潰鏁般€?
-
+调试签名 APK，可侧载；模型为程序化 / Blender 风格化资产，适合移动端面数。

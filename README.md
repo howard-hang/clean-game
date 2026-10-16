@@ -8,7 +8,7 @@ Unity casual cleaning game. Controls: 清洗/旋转 modes, water gun / sponge.
 - 化石主题工具：考古凿 `dig_chisel`（较强，石屑扬尘，无水柱）/ 考古刷 `dig_brush`（较柔，尘土与干泡沫）
 - 其它主题仍是 高压水枪 / 泡泡海绵；清洗与旋转继续互斥
 - 房间是沙地发掘现场（方格网、帆布帐篷、石箱），沉积物为黏土褐色
-- 仓库里还没有这些 FBX 时，用同名程序化占位模型进关；以后把 `Assets/Resources/<id>.fbx` 和 `<id>_base.png` 放进去就会自动换上
+- 正式网格已在 `Assets/Resources/`（每个 id 一对 `.fbx` + `_base.png`，含 `dig_brush` / `dig_chisel`）。缺文件时仍走 `FossilPlaceholders` 占位
 
 ## v1.3.0 — Bathroom model upgrade
 - AI concept four-view sheets under `refs/bath/<id>/fourview.jpg` (Flux via Pollinations)
@@ -49,11 +49,12 @@ See [Releases](https://github.com/howard-hang/clean-game/releases)
 
 - Windows：Unity **6000.3.26f1**，打开本仓库，菜单或 `BuildScript.Win`
 - Android：Unity **2022.3.58f1c1**（Unity 6 Android 模块当前 CDN 404），用 `clean-game-android` 同源工程 `BuildScript.Android`
-- 模型：`make_assets.py` + Blender 5.x 批处理烘焙
-- 化石模型若尚未导入，运行时使用 `FossilPlaceholders` 占位，资源名与上表 mesh id 一致
+- 模型：`make_assets.py`、`make_fossil_v14.py` + Blender 5.x 批处理烘焙
+- 化石 FBX 缺失时，运行时仍用 `FossilPlaceholders` 按同样的资源名占位
 
 ```bash
 blender -b -P make_assets.py -- Assets/Resources
+blender -b -P make_fossil_v14.py -- Assets/Resources
 ```
 
 ## 下载

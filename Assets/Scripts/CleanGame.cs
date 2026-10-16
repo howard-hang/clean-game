@@ -14,7 +14,9 @@ public class CleanGame : MonoBehaviour {
   Theme[] themes;
   const int N = 512;
   enum St { ThemeSelect, LevelSelect, Play, Win }
+  enum Mode { Clean, Rotate } // single-finger drag only does active mode — never both
   St state = St.ThemeSelect;
+  Mode mode = Mode.Clean;
   int themeIdx, cur; GameObject obj; Texture2D tex, glossTex; Color32[] basePx, outPx, glossPx; float[] mud, grime, wet; bool[] used; Color32[] mudCol;
   float totalDirt, progress, shownProgress, levelStart, winT, wetTimer, shake; int stars;
   bool sponge; Camera cam; float camYaw=180, camPitch=18, camDist=5.2f, titleSpin;
@@ -25,6 +27,7 @@ public class CleanGame : MonoBehaviour {
   Vector2 pointer; bool pointerDown, autoMode, rotating; Vector3 toolVel; Vector2 lastRotMouse; List<Vector3> cleanSpots = new List<Vector3>();
   Font font; Dictionary<string,Texture2D> T = new Dictionary<string,Texture2D>();
   AudioClip popClip, dingClip, chord;
+  bool autoShot; string shotDir;
 
   void Awake() {
     themes = new[] {
@@ -101,6 +104,17 @@ public class CleanGame : MonoBehaviour {
     hiss = gameObject.AddComponent<AudioSource>(); hiss.clip = Noise(); hiss.loop = true; hiss.volume = 0; hiss.Play();
     sfx = gameObject.AddComponent<AudioSource>(); popClip = Pop(); dingClip = Tone(880,.25f); chord = Chord();
     themeIdx = 0; Load(0); state = St.ThemeSelect;
+#if UNITY_STANDALONE || UNITY_EDITOR
+    foreach (var a in System.Environment.GetCommandLineArgs()) {
+      if (a == "-autoscreenshot") autoShot = true;
+      if (a.StartsWith("-shotdir=")) shotDir = a.Substring(9);
+    }
+    if (autoShot) {
+      if (string.IsNullOrEmpty(shotDir)) shotDir = System.IO.Path.Combine(Application.dataPath, "..", "screenshots");
+      System.IO.Directory.CreateDirectory(shotDir);
+      StartCoroutine(AutoScreenshotsV6());
+    }
+#endif
   }
 
   Material M(Color c, float gloss, Texture t = null, float metal = 0) { var m = new Material(Shader.Find("Standard")); m.color = c; m.SetFloat("_Glossiness", gloss); m.SetFloat("_Metallic", metal); if (t) m.mainTexture = t; return m; }
@@ -480,44 +494,79 @@ public class CleanGame : MonoBehaviour {
     var b = obj.GetComponent<MeshRenderer>().bounds;
     obj.transform.position += objCenter - b.center;
   }
+  bool IsOverPlayUI(Vector2 screenPos) {
+    // Bottom mode+tool bar (~180px) and top progress bar (~110px)
+    return screenPos.y < 190 || screenPos.y > Screen.height - 110;
+  }
   void Update() {
-    if (!autoMode) {
-      bool touchClean = false, touchRotate = false;
+    if (!autoMode && state == St.Play) {
+      bool wantClean = false, wantRotate = false;
+      // Two-finger: pinch ZOOM only (never clean, never rotate) — keeps gestures unambiguous
       if (Input.touchCount >= 2) {
         var t0 = Input.GetTouch(0); var t1 = Input.GetTouch(1);
         pointer = (t0.position + t1.position) * .5f;
-        Vector2 d = t0.deltaPosition + t1.deltaPosition;
         float curDist = Vector2.Distance(t0.position, t1.position);
         float prevDist = Vector2.Distance(t0.position - t0.deltaPosition, t1.position - t1.deltaPosition);
         if (prevDist > 8f) camDist = Mathf.Clamp(camDist - (curDist - prevDist) * .01f, 3.2f, 8.5f);
-        objYaw -= d.x * .35f; objPitch = Mathf.Clamp(objPitch + d.y * .28f, -70f, 70f);
-        ApplyObjectRotation(); touchRotate = true; rotating = true;
+        rotating = false; pointerDown = false;
       } else if (Input.touchCount == 1) {
         var t0 = Input.GetTouch(0); pointer = t0.position;
-        bool overUI = pointer.y < 110 || pointer.y > Screen.height - 110;
-        if (!overUI && GUIUtility.hotControl == 0 && (t0.phase == TouchPhase.Began || t0.phase == TouchPhase.Moved || t0.phase == TouchPhase.Stationary))
-          touchClean = true;
-        rotating = false;
+        bool overUI = IsOverPlayUI(pointer);
+        bool dragging = !overUI && GUIUtility.hotControl == 0 &&
+          (t0.phase == TouchPhase.Began || t0.phase == TouchPhase.Moved || t0.phase == TouchPhase.Stationary);
+        if (dragging) {
+          if (mode == Mode.Clean) wantClean = true;
+          else {
+            wantRotate = true;
+            Vector2 d = t0.deltaPosition;
+            objYaw -= d.x * .35f;
+            objPitch = Mathf.Clamp(objPitch + d.y * .28f, -70f, 70f);
+            ApplyObjectRotation();
+          }
+        }
+        rotating = wantRotate; pointerDown = wantClean;
       } else {
+        // Mouse / PC
         pointer = Input.mousePosition;
-        bool overUI = pointer.y < 110 || pointer.y > Screen.height - 110;
+        bool overUI = IsOverPlayUI(pointer);
+        // Right-drag ALWAYS rotates (never cleans) — escape hatch
         if (Input.GetMouseButtonDown(1)) { rotating = true; lastRotMouse = pointer; }
         if (Input.GetMouseButtonUp(1)) rotating = false;
         if (rotating && Input.GetMouseButton(1)) {
           Vector2 d = (Vector2)pointer - lastRotMouse; lastRotMouse = pointer;
           objYaw -= d.x * .45f; objPitch = Mathf.Clamp(objPitch + d.y * .35f, -70f, 70f);
-          ApplyObjectRotation(); touchRotate = true;
+          ApplyObjectRotation(); wantRotate = true;
         }
-        touchClean = Input.GetMouseButton(0) && !rotating && !overUI && GUIUtility.hotControl == 0;
+        // Left-drag follows active mode only
+        if (Input.GetMouseButton(0) && !rotating && !overUI && GUIUtility.hotControl == 0) {
+          if (mode == Mode.Clean) wantClean = true;
+          else {
+            wantRotate = true;
+            if (Input.GetMouseButtonDown(0)) lastRotMouse = pointer;
+            Vector2 d = (Vector2)pointer - lastRotMouse; lastRotMouse = pointer;
+            objYaw -= d.x * .45f; objPitch = Mathf.Clamp(objPitch + d.y * .35f, -70f, 70f);
+            ApplyObjectRotation();
+          }
+        }
+        rotating = wantRotate || (rotating && Input.GetMouseButton(1));
+        pointerDown = wantClean && !wantRotate;
       }
-      pointerDown = touchClean && !touchRotate;
+    } else if (!autoMode) {
+      pointer = Input.mousePosition;
+      if (Input.touchCount >= 1) pointer = Input.GetTouch(0).position;
+      pointerDown = false; rotating = false;
     }
-    if (Input.GetKeyDown(KeyCode.Alpha1)) sponge=false; if (Input.GetKeyDown(KeyCode.Alpha2)) sponge=true;
+    // Hotkeys: 1/2 tools, Q clean mode, E rotate mode
+    if (Input.GetKeyDown(KeyCode.Alpha1)) { sponge=false; mode=Mode.Clean; }
+    if (Input.GetKeyDown(KeyCode.Alpha2)) { sponge=true; mode=Mode.Clean; }
+    if (Input.GetKeyDown(KeyCode.Q)) mode = Mode.Clean;
+    if (Input.GetKeyDown(KeyCode.E)) mode = Mode.Rotate;
 
     if (state == St.ThemeSelect || state == St.LevelSelect) {
       titleSpin += Time.deltaTime; camYaw = 180 + Mathf.Sin(titleSpin*.4f)*18;
       if (obj) { objYaw = titleSpin*25f; ApplyObjectRotation(); }
     }
+
     var tgt = new Vector3(0, 1.45f, 0);
     shake = Mathf.MoveTowards(shake, 0, Time.deltaTime*.2f);
     Vector3 jit = new Vector3(Mathf.PerlinNoise(Time.time*25,0)-.5f, Mathf.PerlinNoise(0,Time.time*25)-.5f, 0) * shake;
@@ -525,7 +574,7 @@ public class CleanGame : MonoBehaviour {
     cam.transform.LookAt(tgt); cam.transform.position += cam.transform.rotation * jit;
     if (!autoMode) camDist = Mathf.Clamp(camDist - Input.mouseScrollDelta.y*.4f, 3.2f, 8.5f);
 
-    bool playing = state == St.Play; nozzle.SetActive(playing && !sponge); spongeObj.SetActive(playing && sponge);
+    bool playing = state == St.Play; bool showTool = playing && mode == Mode.Clean; nozzle.SetActive(showTool && !sponge); spongeObj.SetActive(showTool && sponge);
     bool cleaning = false; jet.enabled = false;
     if (playing) {
       var ray = cam.ScreenPointToRay(pointer);
@@ -547,7 +596,7 @@ public class CleanGame : MonoBehaviour {
       t.rotation = Quaternion.Slerp(t.rotation, wantR, .35f);
       if (sponge) { var v = (t.position-prev)/Mathf.Max(Time.deltaTime,.001f); t.Rotate(Vector3.forward, Mathf.Clamp(Vector3.Dot(v, cam.transform.right)*-5, -18, 18), Space.Self); }
 
-      if (pointerDown) {
+      if (pointerDown && mode == Mode.Clean) {
         if (!hitObj && !sponge) {
           var tip0 = nozzle.transform.TransformPoint(0,0,.33f);
           hit = HitObject(new Ray(tip0, (aim - tip0).normalized));
@@ -624,6 +673,21 @@ public class CleanGame : MonoBehaviour {
     float lim = .48f * Mathf.Lerp(.45f, 1, Mathf.Pow(Mathf.Abs(Mathf.Cos((ang+Mathf.PI/2)*2.5f)),3)); float a = Mathf.Clamp01((lim - r)*80);
     Color c = on ? Color.Lerp(new Color(1f,.65f,.1f), new Color(1f,.92f,.35f), v) : new Color(.8f,.82f,.86f); if (r > lim - .04f) c = on ? new Color(.85f,.45f,.05f) : new Color(.65f,.67f,.72f); c.a = a; return c; }); }
 
+  Texture2D RotateIcon() { return Cached("rot", 64, (x,y,u,v) => {
+      float cx=.5f, cy=.5f; float dx=u-cx, dy=v-cy; float r=Mathf.Sqrt(dx*dx+dy*dy);
+      float ang=Mathf.Atan2(dy,dx);
+      // ring
+      float ring = Mathf.Abs(r-.32f);
+      float a = ring<.07f ? 1f : 0f;
+      // arrow head at top-right of ring
+      float aa = Mathf.Repeat(ang + Mathf.PI*.15f, Mathf.PI*2);
+      if (r>.22f && r<.42f && aa < .55f) a = Mathf.Max(a, 1f);
+      // center dot
+      if (r<.08f) a = 1f;
+      Color c = Color.Lerp(new Color(.85f,.75f,1f), new Color(.55f,.35f,.95f), v);
+      c.a = a; return c;
+    }); }
+
   void OnGUI() {
     float w = Screen.width, h = Screen.height; float ui = Mathf.Clamp(h/800f, .7f, 1.6f); GUI.matrix = Matrix4x4.Scale(new Vector3(ui,ui,1)); w/=ui; h/=ui;
     var teal = Round("teal", new Color(.35f,.85f,.8f), new Color(.15f,.65f,.65f)); var tealH = Round("tealH", new Color(.45f,.92f,.86f), new Color(.2f,.72f,.7f));
@@ -690,11 +754,30 @@ public class CleanGame : MonoBehaviour {
     float sx = Mathf.Repeat(Time.time*.7f, 1.4f)-.2f; GUI.BeginGroup(fillR); GUI.DrawTexture(new Rect(sx*fillR.width - 30, 0, 30, bar.height), Round("shine", new Color(1,1,1,.55f), new Color(1,1,1,.25f), 12)); GUI.EndGroup();
     GUI.Label(new Rect(bar.xMax+6, bar.y-4, 80, 34), $"{Mathf.RoundToInt(shownProgress*100)}%", St_(24, new Color(.15f,.6f,.62f)));
     if (state == St.Play) {
-      var a = new Rect(w/2-230, h-96, 220, 74); var b2 = new Rect(w/2+10, h-96, 220, 74);
-      if (Btn(a, "高压水枪", !sponge?teal:gray, tealH, 24, DropIcon())) sponge = false;
-      if (Btn(b2, "泡泡海绵", sponge?orange:gray, orangeH, 24, SpongeIcon())) sponge = true;
-      GUI.Label(new Rect(0, h-122, w, 22), "单指拖动清洁 · 双指旋转/缩放 · 右键旋转物体", St_(15, dark, FontStyle.Normal));
+      // Mode row: 清洗 / 旋转 — mutually exclusive, clearly highlighted
+      float mw = 160, mh = 64, gap = 14;
+      float modeY = h - 168;
+      var cleanR = new Rect(w/2 - mw - gap/2, modeY, mw, mh);
+      var rotR = new Rect(w/2 + gap/2, modeY, mw, mh);
+      var purple = Round("pur", new Color(.7f,.55f,.95f), new Color(.5f,.35f,.85f));
+      var purpleH = Round("purH", new Color(.8f,.65f,1f), new Color(.6f,.45f,.9f));
+      if (Btn(cleanR, "清洗", mode==Mode.Clean?teal:gray, tealH, 26, DropIcon())) mode = Mode.Clean;
+      if (Btn(rotR, "旋转", mode==Mode.Rotate?purple:gray, purpleH, 26, RotateIcon())) mode = Mode.Rotate;
+      // Tool row (only meaningful in Clean mode; still visible but dimmed in Rotate)
+      var a = new Rect(w/2-230, h-90, 220, 64); var b2 = new Rect(w/2+10, h-90, 220, 64);
+      if (mode == Mode.Clean) {
+        if (Btn(a, "高压水枪", !sponge?teal:gray, tealH, 22, DropIcon())) sponge = false;
+        if (Btn(b2, "泡泡海绵", sponge?orange:gray, orangeH, 22, SpongeIcon())) sponge = true;
+      } else {
+        Panel(a, gray); GUI.Label(a, "高压水枪", St_(22, new Color(1,1,1,.55f)));
+        Panel(b2, gray); GUI.Label(b2, "泡泡海绵", St_(22, new Color(1,1,1,.55f)));
+      }
+      string tip = mode == Mode.Clean
+        ? "清洗模式：单指在物体上拖动清洁 · 双指开合缩放 · 右键也可旋转"
+        : "旋转模式：单指拖动只转物体 · 不会清洁 · 双指开合缩放";
+      GUI.Label(new Rect(0, modeY - 28, w, 24), tip, St_(15, dark, FontStyle.Normal));
     }
+
     if (state == St.Win) {
       if (shineT >= 0) { shineT += Time.deltaTime; float p = shineT/.9f; if (p < 1.2f) { var mtx = GUI.matrix; GUIUtility.RotateAroundPivot(25, new Vector2(w/2, h/2)); GUI.DrawTexture(new Rect(-w*.3f + p*w*1.6f - 120, -h, 160, h*3), Round("sweep", new Color(1,1,1,.0f), new Color(1,1,1,.55f), 2)); GUI.matrix = mtx; } }
       float t = Time.time - winT; if (winT <= 0 || t < 0) return;
@@ -721,7 +804,33 @@ public class CleanGame : MonoBehaviour {
     themeIdx = ti; BuildRoom(ti); Load(0); state = St.LevelSelect; camYaw = 180; camPitch = 18;
   }
   void StartLevel(int i) {
-    Load(i); state = St.Play; dingStep = 0; winT = 0; shineT = -1; camYaw = 180; camPitch = 18; objYaw = 0; objPitch = 0; ApplyObjectRotation(); rotating = false;
+    Load(i); state = St.Play; mode = Mode.Clean; dingStep = 0; winT = 0; shineT = -1; camYaw = 180; camPitch = 18; objYaw = 0; objPitch = 0; ApplyObjectRotation(); rotating = false; pointerDown = false;
   }
+
+#if UNITY_STANDALONE || UNITY_EDITOR
+  void CapShot(string name){ UnityEngine.ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(shotDir, name)); Debug.Log("SHOT "+name); }
+  System.Collections.IEnumerator AutoScreenshotsV6() {
+    autoMode = true; yield return new WaitForSeconds(1.0f);
+    OpenTheme(0); StartLevel(0); mode = Mode.Clean; sponge = false;
+    yield return new WaitForSeconds(0.9f);
+    CapShot("unity-v6-shot01-mode-clean.png");
+    // simulate clean briefly
+    pointer = new Vector2(Screen.width/2f, Screen.height*0.55f); pointerDown = true; mode = Mode.Clean;
+    float end = Time.time + 2.0f; while (Time.time < end) yield return null;
+    CapShot("unity-v6-shot02-cleaning.png");
+    pointerDown = false;
+    mode = Mode.Rotate; yield return new WaitForSeconds(0.4f);
+    CapShot("unity-v6-shot03-mode-rotate.png");
+    // rotate without cleaning
+    for (int i=0;i<40;i++){ objYaw -= 4f; ApplyObjectRotation(); yield return null; }
+    CapShot("unity-v6-shot04-rotated-no-clean.png");
+    // show progress unchanged-ish (dirt still there) — switch back
+    mode = Mode.Clean; yield return new WaitForSeconds(0.3f);
+    CapShot("unity-v6-shot05-back-to-clean.png");
+    OpenTheme(1); StartLevel(0); mode = Mode.Rotate; yield return new WaitForSeconds(0.8f);
+    CapShot("unity-v6-shot06-kitchen-rotate-ui.png");
+    Debug.Log("AUTO_SHOTS_DONE"); Application.Quit();
+  }
+#endif
 
 }

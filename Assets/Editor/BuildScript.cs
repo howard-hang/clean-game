@@ -26,7 +26,7 @@ public static class BuildScript {
   static void Common() {
     PlayerSettings.productName = "\u6d17\u6d17\u66f4\u89e3\u538b";
     PlayerSettings.companyName = "zhanghang";
-    PlayerSettings.bundleVersion = "1.1.0";
+    PlayerSettings.bundleVersion = "1.2.0";
     AlwaysInclude();
   }
   public static void Win() {
@@ -58,7 +58,7 @@ public static class BuildScript {
     PlayerSettings.allowedAutorotateToPortrait = false;
     PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
     PlayerSettings.Android.useCustomKeystore = false;
-    PlayerSettings.Android.bundleVersionCode = 2;
+    PlayerSettings.Android.bundleVersionCode = 3;
     EditorUserBuildSettings.buildAppBundle = false;
     EditorUserBuildSettings.androidBuildSubtarget = MobileTextureSubtarget.ASTC;
     var sc = MakeScene();

@@ -1,7 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-// 洗洗更解压 v5 — multi-theme, richer models, theme/level select UI
+// 洗洗更解压 v1.4 — 浴室/厨房/车库/花园 + 考古生物；清洗与旋转仍然互斥
 public class CleanGame : MonoBehaviour {
   class Lvl { public string name, mesh; public float tilt, yaw; public Lvl(string n,string m,float t=0,float y=0){name=n;mesh=m;tilt=t;yaw=y;} }
   class Theme {
@@ -19,10 +19,11 @@ public class CleanGame : MonoBehaviour {
   Mode mode = Mode.Clean;
   int themeIdx, cur; GameObject obj; Texture2D tex, glossTex; Color32[] basePx, outPx, glossPx; float[] mud, grime, wet; bool[] used; Color32[] mudCol;
   float totalDirt, progress, shownProgress, levelStart, winT, wetTimer, shake; int stars;
+  Color32 dirtGrime = new Color32(96, 104, 70, 255); // 污渍底色：浴室是绿垢，化石关会改成黏土
   bool sponge; Camera cam; float camYaw=180, camPitch=18, camDist=5.2f, titleSpin;
   float objYaw, objPitch; Quaternion objBaseRot; Vector3 objCenter;
   ParticleSystem water, mudPs, foam, confetti, glint, mist; LineRenderer jet;
-  AudioSource hiss, sfx; GameObject puddle, nozzle, spongeObj, roomRoot; Material puddleMat;
+  AudioSource hiss, sfx; GameObject puddle, nozzle, spongeObj, digBrush, digChisel, roomRoot; Material puddleMat;
   Light sun, fill, rim, windowLight;
   Vector2 pointer; bool pointerDown, autoMode, rotating; Vector3 toolVel; Vector2 lastRotMouse; List<Vector3> cleanSpots = new List<Vector3>();
   Font font; Dictionary<string,Texture2D> T = new Dictionary<string,Texture2D>();
@@ -66,6 +67,16 @@ public class CleanGame : MonoBehaviour {
           new Lvl("小鸟屋","birdhouse",0,20),
           new Lvl("花园青蛙","frog",0,-30),
           new Lvl("手推车","wheelbarrow",0,35),
+        }),
+      // 考古生物：6 件化石。mesh 名与 Resources 里的 FBX 同名，没有 FBX 时用程序化占位。
+      new Theme("fossil","考古生物","清理远古化石骨架",
+        new Color(.82f,.68f,.42f), new Color(.90f,.76f,.55f), new Color(.76f,.62f,.44f), new[]{
+          new Lvl("霸王龙头骨","trex_skull",8,-25),
+          new Lvl("三角龙头骨","triceratops_skull",6,20),
+          new Lvl("剑龙背板","stego_plate",0,15),
+          new Lvl("菊石","ammonite",75,10),
+          new Lvl("三叶虫","trilobite",70,-10),
+          new Lvl("猛犸象牙","mammoth_tusk",12,30),
         }),
     };
   }
@@ -205,26 +216,38 @@ public class CleanGame : MonoBehaviour {
   void ApplyThemeLights(int ti) {
     var th = themes[ti];
     cam.backgroundColor = th.sky; RenderSettings.fogColor = th.fog;
-    if (ti==0) { // bath — cool daylight
+    // 先回到默认环境光，避免考古主题的沙色漏到其它房间
+    RenderSettings.ambientSkyColor = new Color(1f,.97f,.92f);
+    RenderSettings.ambientEquatorColor = new Color(.78f,.82f,.86f);
+    RenderSettings.ambientGroundColor = new Color(.45f,.4f,.38f);
+    var id = th.id;
+    if (id=="bath") { // 浴室：冷日光
       sun.color = new Color(1f,.93f,.82f); sun.intensity = 1.35f; sun.transform.rotation = Quaternion.Euler(42,-48,0);
       fill.color = new Color(.55f,.72f,.95f); fill.intensity = 1.6f; rim.color = new Color(1f,.78f,.92f); rim.intensity = 1.8f;
       windowLight.intensity = 4.5f; windowLight.color = new Color(1f,.96f,.88f);
       RenderSettings.ambientSkyColor = new Color(1f,.97f,.92f);
-    } else if (ti==1) { // kitchen — warm
+    } else if (id=="kitchen") { // 厨房：暖光
       sun.color = new Color(1f,.9f,.75f); sun.intensity = 1.45f; sun.transform.rotation = Quaternion.Euler(50,-30,0);
       fill.color = new Color(1f,.75f,.55f); fill.intensity = 1.8f; rim.color = new Color(.95f,.85f,.6f); rim.intensity = 1.5f;
       windowLight.intensity = 3.5f; windowLight.color = new Color(1f,.92f,.8f);
       RenderSettings.ambientSkyColor = new Color(1f,.95f,.88f);
-    } else if (ti==2) { // garage — cooler industrial
+    } else if (id=="garage") { // 车库：偏冷的工场光
       sun.color = new Color(.9f,.92f,.95f); sun.intensity = 1.15f; sun.transform.rotation = Quaternion.Euler(55,-70,0);
       fill.color = new Color(.7f,.75f,.4f); fill.intensity = 2.0f; rim.color = new Color(1f,.55f,.2f); rim.intensity = 1.4f;
       windowLight.intensity = 2.2f; windowLight.color = new Color(.85f,.9f,1f);
       RenderSettings.ambientSkyColor = new Color(.75f,.78f,.82f);
-    } else { // garden — sunny green
+    } else if (id=="garden") { // 花园：晴天
       sun.color = new Color(1f,.97f,.85f); sun.intensity = 1.55f; sun.transform.rotation = Quaternion.Euler(38,-20,0);
       fill.color = new Color(.55f,.85f,.55f); fill.intensity = 1.5f; rim.color = new Color(1f,.85f,.55f); rim.intensity = 1.6f;
       windowLight.intensity = 5f; windowLight.color = new Color(1f,.98f,.9f);
       RenderSettings.ambientSkyColor = new Color(.95f,1f,.92f);
+    } else { // 发掘现场：暖而带尘的沙漠阳光
+      sun.color = new Color(1f,.86f,.58f); sun.intensity = 1.65f; sun.transform.rotation = Quaternion.Euler(52,-32,0);
+      fill.color = new Color(1f,.72f,.42f); fill.intensity = 1.35f; rim.color = new Color(.95f,.55f,.28f); rim.intensity = 1.25f;
+      windowLight.intensity = 3.4f; windowLight.color = new Color(1f,.8f,.5f);
+      RenderSettings.ambientSkyColor = new Color(1f,.86f,.66f);
+      RenderSettings.ambientEquatorColor = new Color(.9f,.74f,.5f);
+      RenderSettings.ambientGroundColor = new Color(.55f,.4f,.24f);
     }
   }
 
@@ -232,10 +255,12 @@ public class CleanGame : MonoBehaviour {
     ClearRoom(); ApplyThemeLights(ti);
     roomRoot = new GameObject("Room_"+themes[ti].id);
     var room = roomRoot.transform;
-    if (ti==0) BuildBathroom(room);
-    else if (ti==1) BuildKitchen(room);
-    else if (ti==2) BuildGarage(room);
-    else BuildGarden(room);
+    var id = themes[ti].id;
+    if (id=="bath") BuildBathroom(room);
+    else if (id=="kitchen") BuildKitchen(room);
+    else if (id=="garage") BuildGarage(room);
+    else if (id=="garden") BuildGarden(room);
+    else BuildDigSite(room);
     puddleMat = M(new Color(.55f,.78f,.92f,.0f), .98f); puddleMat.SetFloat("_Mode",3); puddleMat.SetInt("_SrcBlend",5); puddleMat.SetInt("_DstBlend",10); puddleMat.SetInt("_ZWrite",0); puddleMat.EnableKeyword("_ALPHABLEND_ON"); puddleMat.renderQueue=3000;
     puddle = Prim(PrimitiveType.Cylinder, new Vector3(0,.325f,0), new Vector3(0,.002f,0), puddleMat, room);
   }
@@ -393,6 +418,87 @@ public class CleanGame : MonoBehaviour {
     Prim(PrimitiveType.Cube, new Vector3(4.5f,.3f,-3.2f), new Vector3(.1f,.5f,.55f), wood, room);
   }
 
+  // 发掘现场 / 标本整理区：沙地、格子网、帆布帐篷、石箱，不是浴室瓷砖
+  void BuildDigSite(Transform room) {
+    var sand = M(Color.white, .12f, SandTex()); sand.mainTextureScale = new Vector2(5f, 5f);
+    Prim(PrimitiveType.Plane, Vector3.zero, Vector3.one * 3.8f, sand, room, true);
+    var dune = M(new Color(.78f, .62f, .38f), .18f);
+    Prim(PrimitiveType.Sphere, new Vector3(-3.2f, .15f, -3.6f), new Vector3(7f, 1.8f, 3.2f), dune, room);
+    Prim(PrimitiveType.Sphere, new Vector3(4.2f, .05f, -3.2f), new Vector3(5.5f, 1.4f, 2.8f), dune, room);
+    Prim(PrimitiveType.Sphere, new Vector3(0f, -.4f, -5.2f), new Vector3(14f, 1.6f, 3f), dune, room);
+    var skyM = M(Color.white, .08f, DesertSky());
+    Prim(PrimitiveType.Quad, new Vector3(0f, 3.6f, -6.2f), new Vector3(18f, 8f, 1f), skyM, room);
+    // 暖阳
+    Prim(PrimitiveType.Sphere, new Vector3(3.4f, 5.3f, -3.2f), Vector3.one * .85f, Emit(new Color(1f, .84f, .42f), 2.4f), room);
+    // 发掘方格：细麻绳铺在沙地上，基座会盖住正中间
+    var twine = M(new Color(.93f, .86f, .62f), .25f);
+    for (int i = -4; i <= 4; i++) {
+      Prim(PrimitiveType.Cube, new Vector3(i * .7f, .015f, -.2f), new Vector3(.015f, .01f, 5.6f), twine, room);
+      Prim(PrimitiveType.Cube, new Vector3(0f, .015f, -0.2f + i * .7f), new Vector3(5.6f, .01f, .015f), twine, room);
+    }
+    var stake = M(new Color(.55f, .38f, .2f), .35f);
+    for (int sx = -1; sx <= 1; sx += 2) for (int sz = -1; sz <= 1; sz += 2)
+      Prim(PrimitiveType.Cube, new Vector3(sx * 2.15f, .18f, sz * 2.15f), new Vector3(.06f, .36f, .06f), stake, room);
+    // 帆布帐篷
+    var canvas = M(Color.white, .2f, Fabric(new Color(.78f, .6f, .34f), new Color(.58f, .4f, .22f)));
+    var pole = M(new Color(.5f, .34f, .18f), .4f);
+    Prim(PrimitiveType.Cylinder, new Vector3(-3.6f, 1.15f, -2.6f), new Vector3(.08f, 1.15f, .08f), pole, room);
+    Prim(PrimitiveType.Cylinder, new Vector3(-1.5f, 1.15f, -2.6f), new Vector3(.08f, 1.15f, .08f), pole, room);
+    // 横梁：圆柱长轴是 Y，转 90 度后横在两根立柱之间
+    Prim(PrimitiveType.Cylinder, new Vector3(-2.55f, 1.7f, -2.6f), new Vector3(.06f, 1.1f, .06f), pole, room).transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+    var roofL = Prim(PrimitiveType.Cube, new Vector3(-3.15f, 1.45f, -2.55f), new Vector3(1.35f, .06f, 1.7f), canvas, room);
+    roofL.transform.localRotation = Quaternion.Euler(0f, 0f, 28f);
+    var roofR = Prim(PrimitiveType.Cube, new Vector3(-1.95f, 1.45f, -2.55f), new Vector3(1.35f, .06f, 1.7f), canvas, room);
+    roofR.transform.localRotation = Quaternion.Euler(0f, 0f, -28f);
+    // 岩石箱与散落石块（标本整理）
+    var crate = M(Color.white, .35f, Tiles(new Color(.62f, .44f, .26f), new Color(.35f, .22f, .12f), 4, true));
+    Prim(PrimitiveType.Cube, new Vector3(3.6f, .45f, -2.4f), new Vector3(1.1f, .9f, .9f), crate, room);
+    Prim(PrimitiveType.Cube, new Vector3(4.5f, .32f, -1.5f), new Vector3(.8f, .64f, .75f), crate, room);
+    var rock = M(new Color(.55f, .5f, .44f), .25f);
+    var rock2 = M(new Color(.42f, .36f, .3f), .3f);
+    Prim(PrimitiveType.Sphere, new Vector3(3.55f, 1.05f, -2.35f), new Vector3(.45f, .32f, .38f), rock, room);
+    Prim(PrimitiveType.Sphere, new Vector3(3.9f, .95f, -2.15f), new Vector3(.32f, .28f, .3f), rock2, room);
+    Prim(PrimitiveType.Sphere, new Vector3(-4.6f, .22f, .4f), new Vector3(.7f, .4f, .55f), rock2, room);
+    Prim(PrimitiveType.Sphere, new Vector3(2.4f, .16f, 1.8f), new Vector3(.5f, .28f, .42f), rock, room);
+    // 整理台：木桌 + 石膏托盘
+    var wood = M(new Color(.58f, .4f, .22f), .4f, Tiles(new Color(.64f, .44f, .26f), new Color(.38f, .24f, .14f), 5, true));
+    Prim(PrimitiveType.Cube, new Vector3(3.3f, .72f, .8f), new Vector3(1.6f, .08f, .7f), wood, room);
+    Prim(PrimitiveType.Cube, new Vector3(2.7f, .36f, .8f), new Vector3(.08f, .7f, .6f), wood, room);
+    Prim(PrimitiveType.Cube, new Vector3(3.9f, .36f, .8f), new Vector3(.08f, .7f, .6f), wood, room);
+    Prim(PrimitiveType.Cube, new Vector3(3.3f, .8f, .8f), new Vector3(.7f, .06f, .4f), M(new Color(.9f, .88f, .82f), .45f), room);
+    // 化石放在压实的沙土基座上，高度与其它主题的展示台一致
+    Prim(PrimitiveType.Cylinder, new Vector3(0f, .14f, 0f), new Vector3(2.85f, .14f, 2.85f), M(new Color(.62f, .48f, .3f), .25f), room, true);
+    Prim(PrimitiveType.Cylinder, new Vector3(0f, .30f, 0f), new Vector3(2.55f, .02f, 2.55f), M(new Color(.82f, .68f, .42f), .35f), room);
+    Prim(PrimitiveType.Cylinder, new Vector3(0f, .31f, 0f), new Vector3(2.62f, .012f, 2.62f), M(new Color(.45f, .32f, .18f), .4f), room);
+  }
+
+  Texture2D SandTex() {
+    int S = 512; var t = new Texture2D(S, S); var px = new Color[S * S];
+    for (int y = 0; y < S; y++) for (int x = 0; x < S; x++) {
+      float n = Mathf.PerlinNoise(x * .02f, y * .02f);
+      float n2 = Mathf.PerlinNoise(x * .15f + 3f, y * .15f);
+      Color c = Color.Lerp(new Color(.72f, .56f, .34f), new Color(.9f, .76f, .48f), n);
+      if (n2 > .78f) c = Color.Lerp(c, new Color(.5f, .42f, .34f), (n2 - .78f) * 3f);
+      c.a = 1f; px[y * S + x] = c;
+    }
+    t.SetPixels(px); t.Apply(true); t.wrapMode = TextureWrapMode.Repeat; return t;
+  }
+
+  // 远处是暖沙丘，上方只留一点灰蓝，整体仍是扬尘的发掘天色
+  Texture2D DesertSky() {
+    int S = 256; var t = new Texture2D(S, S); var px = new Color[S * S];
+    for (int y = 0; y < S; y++) for (int x = 0; x < S; x++) {
+      float v = y / (float)S, u = x / (float)S;
+      Color sky = Color.Lerp(new Color(.95f, .72f, .42f), new Color(.78f, .82f, .9f), Mathf.Clamp01((v - .35f) / .65f));
+      float dune = .22f + Mathf.PerlinNoise(u * 2.2f, 1.7f) * .12f;
+      if (v < dune) sky = Color.Lerp(new Color(.7f, .52f, .3f), new Color(.84f, .66f, .4f), v / dune);
+      float dust = Mathf.PerlinNoise(u * 3f + 2f, v * 2f);
+      if (dust > .6f && v > dune) sky = Color.Lerp(sky, new Color(1f, .9f, .7f), (dust - .6f) * .8f);
+      sky.a = 1f; px[y * S + x] = sky;
+    }
+    t.SetPixels(px); t.Apply(); return t;
+  }
+
   void BuildTools() {
     nozzle = new GameObject("PressureWasher"); var y = M(new Color(1f,.78f,.1f),.6f); var blk = M(new Color(.15f,.15f,.18f),.4f); var metal = M(new Color(.8f,.82f,.85f),.9f,null,1);
     Prim(PrimitiveType.Cylinder, new Vector3(0,0,-.25f), new Vector3(.14f,.25f,.14f), y, nozzle.transform).transform.localRotation = Quaternion.Euler(90,0,0);
@@ -402,8 +508,32 @@ public class CleanGame : MonoBehaviour {
     Prim(PrimitiveType.Cube, new Vector3(0,-.08f,-.2f), new Vector3(.03f,.08f,.03f), M(Color.red,.5f), nozzle.transform);
     spongeObj = new GameObject("Sponge"); Prim(PrimitiveType.Cube, Vector3.zero, new Vector3(.42f,.14f,.3f), M(new Color(1f,.85f,.3f),.05f), spongeObj.transform);
     Prim(PrimitiveType.Cube, new Vector3(0,.09f,0), new Vector3(.42f,.05f,.3f), M(new Color(.3f,.72f,.35f),.05f), spongeObj.transform);
-    foreach (var go in new[]{nozzle, spongeObj}) foreach (var c in go.GetComponentsInChildren<Collider>()) Destroy(c);
-    spongeObj.SetActive(false); nozzle.SetActive(false);
+    BuildFossilTools();
+    foreach (var go in new[]{nozzle, spongeObj, digBrush, digChisel}) foreach (var c in go.GetComponentsInChildren<Collider>()) Destroy(c);
+    spongeObj.SetActive(false); nozzle.SetActive(false); digBrush.SetActive(false); digChisel.SetActive(false);
+  }
+
+  // 考古刷 dig_brush：软毛，贴着骨面扫；考古凿 dig_chisel：刃口朝前，跟水枪同一套指向
+  void BuildFossilTools() {
+    var wood = M(new Color(.55f,.36f,.18f), .4f);
+    var bristle = M(new Color(.93f,.84f,.62f), .15f);
+    var bristleTip = M(new Color(.72f,.6f,.38f), .2f);
+    var metal = M(new Color(.78f,.8f,.83f), .85f, null, .8f);
+    digBrush = new GameObject("dig_brush");
+    // 局部 Y 贴着表面法线（和海绵一样），刷毛在靠化石的一侧
+    Prim(PrimitiveType.Cylinder, new Vector3(0f, .24f, 0f), new Vector3(.07f, .22f, .07f), wood, digBrush.transform);
+    Prim(PrimitiveType.Cylinder, new Vector3(0f, .06f, 0f), new Vector3(.09f, .05f, .09f), metal, digBrush.transform);
+    Prim(PrimitiveType.Cube, new Vector3(0f, -.01f, 0f), new Vector3(.32f, .1f, .2f), bristle, digBrush.transform);
+    Prim(PrimitiveType.Cube, new Vector3(0f, -.05f, 0f), new Vector3(.3f, .03f, .18f), bristleTip, digBrush.transform);
+    digChisel = new GameObject("dig_chisel");
+    var handle = Prim(PrimitiveType.Cylinder, new Vector3(0f, 0f, -.22f), new Vector3(.07f, .2f, .07f), wood, digChisel.transform);
+    handle.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+    var band = Prim(PrimitiveType.Cylinder, new Vector3(0f, 0f, -.02f), new Vector3(.085f, .03f, .085f), metal, digChisel.transform);
+    band.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+    var shaft = Prim(PrimitiveType.Cylinder, new Vector3(0f, 0f, .14f), new Vector3(.035f, .14f, .035f), metal, digChisel.transform);
+    shaft.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+    Prim(PrimitiveType.Cube, new Vector3(0f, 0f, .34f), new Vector3(.13f, .02f, .14f), metal, digChisel.transform);
+    Prim(PrimitiveType.Cube, new Vector3(0f, 0f, -.4f), new Vector3(.1f, .08f, .08f), metal, digChisel.transform);
   }
   ParticleSystem PS(Color c, float s0, float s1, float grav, float life, bool collide) {
     var g = new GameObject("ps"); var ps = g.AddComponent<ParticleSystem>(); ps.Stop();
@@ -428,31 +558,50 @@ public class CleanGame : MonoBehaviour {
     for(int i=0;i<n;i++){ float t=i/(float)sr, s=0; for(int k=0;k<f.Length;k++){ float st=k*.09f; if(t>st) s+=Mathf.Sin(2*Mathf.PI*f[k]*(t-st))*Mathf.Exp(-(t-st)*2.5f)*.16f; } d[i]=s; } var a=AudioClip.Create("c",n,1,sr,false); a.SetData(d,0); return a; }
 
   Lvl[] CurLevels => themes[themeIdx].levels;
+  bool IsFossil => themes[themeIdx].id == "fossil";
   string StarKey(int ti, int li) => $"stars_{ti}_{li}";
 
   void Load(int i) {
     var levels = CurLevels;
     cur = (i + levels.Length) % levels.Length; var L = levels[cur]; if (obj) Destroy(obj); cleanSpots.Clear();
+    // 有同名 FBX 就用正式模型；没有则生成化石占位，关卡仍能进
+    Mesh mesh; Quaternion srcRot = Quaternion.identity; Vector3 srcScale = Vector3.one; Texture2D baseT = null;
     var src = Resources.Load<GameObject>(L.mesh);
-    if (src == null) { Debug.LogError("Missing mesh resource: " + L.mesh); return; }
-    var mf0 = src.GetComponentInChildren<MeshFilter>(); var mesh = mf0.sharedMesh;
+    if (src != null) {
+      var mf0 = src.GetComponentInChildren<MeshFilter>();
+      if (mf0 == null || mf0.sharedMesh == null) { Debug.LogError("Missing mesh resource: " + L.mesh); return; }
+      mesh = mf0.sharedMesh; srcRot = mf0.transform.rotation; srcScale = mf0.transform.lossyScale;
+      baseT = Resources.Load<Texture2D>(L.mesh + "_base");
+      if (baseT == null) { Debug.LogError("Missing texture: " + L.mesh + "_base"); return; }
+    } else if (!FossilPlaceholders.TryCreate(L.mesh, out mesh, out baseT)) {
+      Debug.LogError("Missing mesh resource: " + L.mesh); return;
+    }
     obj = new GameObject(L.name); var mf = obj.AddComponent<MeshFilter>(); mf.sharedMesh = mesh; var mr = obj.AddComponent<MeshRenderer>();
-    obj.transform.rotation = mf0.transform.rotation * Quaternion.identity; obj.transform.localScale = mf0.transform.lossyScale;
+    obj.transform.rotation = srcRot; obj.transform.localScale = srcScale;
     obj.transform.rotation = Quaternion.Euler(L.tilt, L.yaw, 0) * obj.transform.rotation;
     var b = mr.bounds; float s = 2.3f / Mathf.Max(b.size.x, b.size.y, b.size.z); obj.transform.localScale *= s; b = mr.bounds;
     obj.transform.position += new Vector3(-b.center.x, .34f - b.min.y, -b.center.z);
     var mc = obj.AddComponent<MeshCollider>(); mc.sharedMesh = mesh; mc.convex = false;
-    var baseT = Resources.Load<Texture2D>(L.mesh + "_base");
-    if (baseT == null) { Debug.LogError("Missing texture: " + L.mesh + "_base"); return; }
     var bp = baseT.GetPixels32(); int bw = baseT.width;
     tex = new Texture2D(N, N, TextureFormat.RGBA32, true); glossTex = new Texture2D(N, N, TextureFormat.RGBA32, true);
     basePx = new Color32[N*N]; outPx = new Color32[N*N]; glossPx = new Color32[N*N]; mud = new float[N*N]; grime = new float[N*N]; wet = new float[N*N]; used = new bool[N*N]; mudCol = new Color32[N*N];
     float ox = Random.value*50, oy = Random.value*50; totalDirt = 0;
+    bool fossil = IsFossil;
+    // 化石上盖的是沉积物和黏土，不是浴室泥点
+    dirtGrime = fossil ? new Color32(154, 116, 72, 255) : grimeC;
     for (int y=0;y<N;y++) for (int x=0;x<N;x++) { int k=y*N+x; var c = bp[(y*bw/N)*bw + x*bw/N]; basePx[k]=c; used[k] = c.r+c.g+c.b > 8;
       float u=x/(float)N, v=y/(float)N; float n1 = Mathf.PerlinNoise(u*5+ox, v*5+oy), n2 = Mathf.PerlinNoise(u*22+oy, v*22+ox), n3 = Mathf.PerlinNoise(u*60, v*60+ox);
-      float thick = Mathf.Clamp01((n1*1.2f + n2*.5f - .45f) * 2.2f); mud[k] = thick > .05f ? Mathf.Clamp01(thick*1.4f) : 0; grime[k] = 1;
-      mudCol[k] = Color.Lerp(new Color(.30f,.20f,.11f), new Color(.52f,.40f,.24f), n2*.9f + n3*.3f) * (n3 > .78f ? .75f : 1f);
+      float thick = fossil
+        ? Mathf.Clamp01((n1*1.15f + n2*.55f - .28f) * 1.8f)
+        : Mathf.Clamp01((n1*1.2f + n2*.5f - .45f) * 2.2f);
+      mud[k] = thick > .05f ? Mathf.Clamp01(thick*(fossil ? 1.25f : 1.4f)) : 0; grime[k] = 1;
+      if (fossil) {
+        Color clay = Color.Lerp(new Color(.45f,.30f,.16f), new Color(.70f,.50f,.28f), n2*.85f + n3*.35f);
+        if (n3 > .82f) clay = Color.Lerp(clay, new Color(.38f,.34f,.30f), .5f);
+        mudCol[k] = clay;
+      } else mudCol[k] = Color.Lerp(new Color(.30f,.20f,.11f), new Color(.52f,.40f,.24f), n2*.9f + n3*.3f) * (n3 > .78f ? .75f : 1f);
       if (used[k]) totalDirt += mud[k]*.5f + 1; }
+    if (totalDirt < 1f) totalDirt = 1f;
     progress = shownProgress = 0; wetTimer = 0; Compose(); levelStart = Time.time;
     var m = M(Color.white, 1, tex); m.EnableKeyword("_METALLICGLOSSMAP"); m.SetTexture("_MetallicGlossMap", glossTex); m.SetFloat("_GlossMapScale", 1);
     var mats = new Material[mesh.subMeshCount]; for (int q=0;q<mats.Length;q++) mats[q]=m; mr.sharedMaterials = mats; mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
@@ -463,7 +612,7 @@ public class CleanGame : MonoBehaviour {
   static readonly Color32 grimeC = new Color32(96,104,70,255);
   void Compose() {
     for (int k=0;k<N*N;k++) { Color32 c = basePx[k]; float g = grime[k], md = mud[k], w = wet[k];
-      if (g > 0) c = Color32.Lerp(c, grimeC, g*.72f);
+      if (g > 0) c = Color32.Lerp(c, dirtGrime, g*.72f);
       if (md > 0) { float a = Mathf.Clamp01(md*2.5f); c = Color32.Lerp(c, mudCol[k], a); }
       if (w > 0) { float dk = 1 - w*.22f; c.r=(byte)(c.r*dk); c.g=(byte)(c.g*dk); c.b=(byte)(c.b*dk); }
       outPx[k] = c; float sm = Mathf.Lerp(.82f, .08f, Mathf.Clamp01(md*3)) * (1 - g*.55f); sm = Mathf.Max(sm, w*.97f);
@@ -574,7 +723,13 @@ public class CleanGame : MonoBehaviour {
     cam.transform.LookAt(tgt); cam.transform.position += cam.transform.rotation * jit;
     if (!autoMode) camDist = Mathf.Clamp(camDist - Input.mouseScrollDelta.y*.4f, 3.2f, 8.5f);
 
-    bool playing = state == St.Play; bool showTool = playing && mode == Mode.Clean; nozzle.SetActive(showTool && !sponge); spongeObj.SetActive(showTool && sponge);
+    bool playing = state == St.Play; bool showTool = playing && mode == Mode.Clean;
+    bool fossil = IsFossil;
+    // 强工具在左：水枪或考古凿；软工具在右：海绵或考古刷。清洗/旋转仍然分开。
+    nozzle.SetActive(showTool && !sponge && !fossil);
+    spongeObj.SetActive(showTool && sponge && !fossil);
+    digChisel.SetActive(showTool && !sponge && fossil);
+    digBrush.SetActive(showTool && sponge && fossil);
     bool cleaning = false; jet.enabled = false;
     if (playing) {
       var ray = cam.ScreenPointToRay(pointer);
@@ -591,14 +746,15 @@ public class CleanGame : MonoBehaviour {
         wantR = Quaternion.LookRotation(up.normalized, n);
       }
       float bob = pointerDown && hitObj ? Mathf.Sin(Time.time*(sponge?18:36))*(sponge?.015f:.006f) : Mathf.Sin(Time.time*3)*.015f;
-      var t = sponge ? spongeObj.transform : nozzle.transform; var prev = t.position;
+      Transform toolTf = fossil ? (sponge ? digBrush.transform : digChisel.transform) : (sponge ? spongeObj.transform : nozzle.transform);
+      var t = toolTf; var prev = t.position;
       t.position = Vector3.SmoothDamp(t.position, want + n*bob, ref toolVel, .04f);
       t.rotation = Quaternion.Slerp(t.rotation, wantR, .35f);
       if (sponge) { var v = (t.position-prev)/Mathf.Max(Time.deltaTime,.001f); t.Rotate(Vector3.forward, Mathf.Clamp(Vector3.Dot(v, cam.transform.right)*-5, -18, 18), Space.Self); }
 
       if (pointerDown && mode == Mode.Clean) {
         if (!hitObj && !sponge) {
-          var tip0 = nozzle.transform.TransformPoint(0,0,.33f);
+          var tip0 = t.TransformPoint(0,0,.33f);
           hit = HitObject(new Ray(tip0, (aim - tip0).normalized));
           hitObj = HasHit(hit);
           if (hitObj) { aim = hit.point; n = hit.normal.normalized; }
@@ -607,11 +763,12 @@ public class CleanGame : MonoBehaviour {
           cleaning = true;
           Vector2 uv = hit.textureCoord;
           if (uv.x <= 0 && uv.y <= 0) uv = hit.textureCoord2;
+          // 凿 = 水枪力度；刷 = 海绵力度。考古主题不喷水。
           float mr = Brush(uv, sponge ? .085f : .14f, sponge ? 1.4f : 3.2f);
           var ep = new ParticleSystem.EmitParams();
           Vector3 surface = hit.point + n * .04f;
-          if (!sponge) {
-            var tip = nozzle.transform.TransformPoint(0,0,.33f);
+          if (!sponge && !fossil) {
+            var tip = t.TransformPoint(0,0,.33f);
             jet.enabled = true;
             for (int i=0;i<jet.positionCount;i++) {
               float u = i/(float)(jet.positionCount-1);
@@ -624,13 +781,53 @@ public class CleanGame : MonoBehaviour {
             for (int i=0;i<10;i++){ ep.position = Vector3.Lerp(tip, surface, Random.value); ep.velocity = dir*(8+Random.value*4) + Random.insideUnitSphere*.6f; ep.startLifetime=.1f; ep.startSize=Random.Range(.02f,.05f); water.Emit(ep,1); }
             for (int i=0;i<10;i++){ ep.position = surface; ep.velocity = Vector3.Reflect(dir, n)*3f + Random.insideUnitSphere*2.5f + Vector3.up*1.2f; ep.startLifetime=.5f; water.Emit(ep,1); }
             if (Random.value < .7f) { ep.position = surface; ep.velocity = n*.5f + Random.insideUnitSphere*.4f; mist.Emit(ep,1); }
+          } else if (!sponge) {
+            // 考古凿：石屑和扬尘，没有水柱
+            shake = Mathf.Max(shake, .03f);
+            for (int i=0;i<8;i++){
+              ep.position = surface; ep.velocity = n*(1.4f+Random.value*2.2f) + Random.insideUnitSphere*1.5f + Vector3.up*.6f;
+              ep.startLifetime = .4f; ep.startSize = Random.Range(.03f,.09f);
+              ep.startColor = Color.Lerp(new Color(.5f,.36f,.2f), new Color(.75f,.62f,.4f), Random.value);
+              mudPs.Emit(ep,1);
+            }
+            if (Random.value < .8f) {
+              ep.position = surface; ep.velocity = n*.35f + Random.insideUnitSphere*.45f; ep.startSize = Random.Range(.08f,.2f);
+              ep.startColor = new Color(.82f,.7f,.48f,.55f); mist.Emit(ep,1);
+            }
+          } else if (fossil) {
+            // 考古刷：细尘加一点干泡沫，比凿轻
+            if (Random.value < .7f) {
+              ep.position = surface + Random.insideUnitSphere*.05f; ep.velocity = n*.08f + Vector3.up*.05f;
+              ep.startSize = Random.Range(.05f,.14f); ep.startColor = new Color(.9f,.82f,.62f,.8f); foam.Emit(ep,1);
+            }
+            if (Random.value < .55f) {
+              ep.position = surface; ep.velocity = n*.2f + Random.insideUnitSphere*.25f;
+              ep.startSize = Random.Range(.03f,.07f); ep.startColor = new Color(.62f,.48f,.28f,.85f); mudPs.Emit(ep,1);
+            }
           } else if (Random.value < .65f) {
             ep.position = surface + Random.insideUnitSphere*.05f; ep.velocity = n*.06f; ep.startSize = Random.Range(.05f,.16f); foam.Emit(ep,1);
           }
           int chunks = Mathf.Min(8, (int)(mr*.05f) + (Random.value < mr*.012f ? 1 : 0));
-          for (int i=0;i<chunks;i++){ ep.position = surface; ep.velocity = (sponge ? Vector3.down*.3f + n*.5f : n*2.5f + Random.insideUnitSphere*1.8f); ep.startSize = Random.Range(.03f,.1f); mudPs.Emit(ep,1); }
-          if (mr < 1 && Random.value < .14f) { ep.position = surface + Random.insideUnitSphere*.12f; ep.velocity = Vector3.zero; glint.Emit(ep,1); if (cleanSpots.Count < 200) cleanSpots.Add(surface); }
-          float ps = Mathf.Min(1.9f, puddle.transform.localScale.x + Time.deltaTime*.14f); puddle.transform.localScale = new Vector3(ps,.002f,ps); puddleMat.color = new Color(.6f,.8f,.95f, Mathf.Min(.55f, ps*.35f));
+          for (int i=0;i<chunks;i++){
+            ep.position = surface; ep.velocity = (sponge ? Vector3.down*.3f + n*.5f : n*2.5f + Random.insideUnitSphere*1.8f); ep.startSize = Random.Range(.03f,.1f);
+            if (fossil) ep.startColor = Color.Lerp(new Color(.55f,.4f,.22f), new Color(.72f,.58f,.36f), Random.value);
+            mudPs.Emit(ep,1);
+          }
+          if (mr < 1 && Random.value < .14f) {
+            var spark = new ParticleSystem.EmitParams();
+            spark.position = surface + Random.insideUnitSphere*.12f; spark.velocity = Vector3.zero; glint.Emit(spark, 1);
+            if (cleanSpots.Count < 200) cleanSpots.Add(surface);
+          }
+          if (puddle) {
+            if (fossil) {
+              // 干粉尘痕迹，不是水洼
+              float ps = Mathf.Min(1.15f, puddle.transform.localScale.x + Time.deltaTime*.04f);
+              puddle.transform.localScale = new Vector3(ps,.002f,ps);
+              puddleMat.color = new Color(.58f,.46f,.28f, Mathf.Min(.22f, ps*.16f));
+            } else {
+              float ps = Mathf.Min(1.9f, puddle.transform.localScale.x + Time.deltaTime*.14f); puddle.transform.localScale = new Vector3(ps,.002f,ps); puddleMat.color = new Color(.6f,.8f,.95f, Mathf.Min(.55f, ps*.35f));
+            }
+          }
           if (progress*10 >= dingStep+1) { dingStep = Mathf.Floor(progress*10); sfx.pitch = 1 + dingStep*.06f; sfx.PlayOneShot(dingClip,.5f); sfx.pitch = 1; }
           if (progress >= .95f) StartCoroutine(WinSeq());
         }
@@ -639,7 +836,14 @@ public class CleanGame : MonoBehaviour {
       if (cleanSpots.Count > 0 && Random.value < .06f) { var ep2 = new ParticleSystem.EmitParams(); ep2.position = cleanSpots[Random.Range(0,cleanSpots.Count)]; ep2.velocity=Vector3.zero; glint.Emit(ep2,1); }
     }
     if (wetTimer > 0 && obj) { wetTimer -= Time.deltaTime; float dec = Time.deltaTime*.3f; for (int k=0;k<wet.Length;k++) if (wet[k]>0) wet[k]=Mathf.Max(0,wet[k]-dec); Compose(); }
-    hiss.volume = Mathf.MoveTowards(hiss.volume, cleaning ? (sponge?.18f:.4f) : 0, Time.deltaTime*3); hiss.pitch = sponge ? .55f : 1.15f + Mathf.Sin(Time.time*7)*.03f;
+    float hissVol = 0f, hissPitch = 1f;
+    if (cleaning) {
+      if (fossil && sponge) { hissVol = .16f; hissPitch = .42f; }       // 考古刷
+      else if (fossil) { hissVol = .26f; hissPitch = .62f; }            // 考古凿
+      else if (sponge) { hissVol = .18f; hissPitch = .55f; }
+      else { hissVol = .4f; hissPitch = 1.15f + Mathf.Sin(Time.time*7f)*.03f; }
+    }
+    hiss.volume = Mathf.MoveTowards(hiss.volume, hissVol, Time.deltaTime*3); hiss.pitch = hissPitch;
     shownProgress = Mathf.Lerp(shownProgress, progress, Time.deltaTime*6);
     if (state == St.Win && obj) { objYaw += 60*Time.deltaTime; ApplyObjectRotation(); }
   }
@@ -669,6 +873,31 @@ public class CleanGame : MonoBehaviour {
   Texture2D DropIcon() { return Cached("drop", 64, (x,y,u,v) => { float cx=.5f, cy=.38f; float d = Vector2.Distance(new Vector2(u,v), new Vector2(cx,cy)); bool tip = v>cy && Mathf.Abs(u-cx) < (1-(v-cy)/.55f)*.28f; float a = (d<.28f||tip)?1:0;
     Color c = Color.Lerp(new Color(.3f,.7f,1f), new Color(.75f,.95f,1f), v); if (Vector2.Distance(new Vector2(u,v), new Vector2(.42f,.32f))<.07f) c=Color.white; c.a=a; return c; }); }
   Texture2D SpongeIcon() { return Cached("spg", 64, (x,y,u,v) => { bool body = u>.12f&&u<.88f&&v>.25f&&v<.62f; bool top = u>.12f&&u<.88f&&v>=.62f&&v<.75f; Color c = top?new Color(.3f,.75f,.35f):new Color(1f,.85f,.3f); if (body && Mathf.PerlinNoise(u*20,v*20)>.7f) c*=.85f; c.a=(body||top)?1:0; return c; }); }
+  // 考古刷图标：木柄 + 浅色刷毛
+  Texture2D BrushIcon() { return Cached("dbrush", 64, (x,y,u,v) => {
+    bool handle = u>.42f && u<.58f && v>.08f && v<.58f;
+    bool ferrule = u>.36f && u<.64f && v>.54f && v<.66f;
+    bool bristle = u>.2f && u<.8f && v>.66f && v<.94f;
+    if (bristle && (x / 3) % 2 == 0) return new Color(.9f,.82f,.58f,1f);
+    if (ferrule) return new Color(.78f,.8f,.84f,1f);
+    if (handle) return new Color(.58f,.38f,.18f,1f);
+    return new Color(0,0,0,0);
+  }); }
+  // 考古凿图标：木柄在下，扁刃朝上
+  Texture2D ChiselIcon() { return Cached("dchisel", 64, (x,y,u,v) => {
+    bool handle = u>.4f && u<.6f && v>.48f && v<.92f;
+    bool shaft = u>.44f && u<.56f && v>.28f && v<.52f;
+    float half = Mathf.Lerp(.18f, .05f, Mathf.Clamp01(v / .3f));
+    bool blade = v>.06f && v<.32f && Mathf.Abs(u - .5f) < half;
+    if (blade) return new Color(.86f,.88f,.9f,1f);
+    if (shaft) return new Color(.7f,.72f,.76f,1f);
+    if (handle) return new Color(.55f,.36f,.18f,1f);
+    return new Color(0,0,0,0);
+  }); }
+  void ToolLabels(out string hardName, out string softName, out Texture2D hardIcon, out Texture2D softIcon) {
+    if (IsFossil) { hardName = "考古凿"; softName = "考古刷"; hardIcon = ChiselIcon(); softIcon = BrushIcon(); }
+    else { hardName = "高压水枪"; softName = "泡泡海绵"; hardIcon = DropIcon(); softIcon = SpongeIcon(); }
+  }
   Texture2D StarIcon(bool on) { return Cached(on?"st1":"st0", 96, (x,y,u,v) => { float px=u-.5f, py=.5f-v; float ang = Mathf.Atan2(py,px), r = Mathf.Sqrt(px*px+py*py);
     float lim = .48f * Mathf.Lerp(.45f, 1, Mathf.Pow(Mathf.Abs(Mathf.Cos((ang+Mathf.PI/2)*2.5f)),3)); float a = Mathf.Clamp01((lim - r)*80);
     Color c = on ? Color.Lerp(new Color(1f,.65f,.1f), new Color(1f,.92f,.35f), v) : new Color(.8f,.82f,.86f); if (r > lim - .04f) c = on ? new Color(.85f,.45f,.05f) : new Color(.65f,.67f,.72f); c.a = a; return c; }); }
@@ -700,21 +929,26 @@ public class CleanGame : MonoBehaviour {
       float bob = Mathf.Sin(Time.time*2)*6;
       Shadowed(new Rect(0, 50+bob, w, 90), "洗洗更解压", St_(78, Color.white), new Color(.15f,.6f,.62f), 6);
       GUI.Label(new Rect(0, 145, w, 36), "选择一个主题开始闪亮大作战", St_(24, dark, FontStyle.Normal));
-      float cw = 200, gap = 22, tot = themes.Length*cw + (themes.Length-1)*gap, x0 = (w-tot)/2, y0 = h*.42f;
+      float gap = 18f, cw = 200f;
+      float tot = themes.Length*cw + (themes.Length-1)*gap;
+      if (tot > w - 32f) cw = (w - 32f - (themes.Length-1)*gap) / themes.Length;
+      tot = themes.Length*cw + (themes.Length-1)*gap;
+      float x0 = (w-tot)/2, y0 = h*.42f;
+      int namePx = cw < 176f ? 28 : 36;
       for (int i=0;i<themes.Length;i++) {
         var th = themes[i]; var r = new Rect(x0 + i*(cw+gap), y0, cw, 230); bool hov = r.Contains(Event.current.mousePosition); if (hov) r.y -= 6;
         Panel(new Rect(r.x, r.y+6, r.width, r.height), Round("btnsh", new Color(0,0,0,.18f), new Color(0,0,0,.18f)));
         Panel(r, white);
         var accent = Round("acc"+i, Color.Lerp(th.accent,Color.white,.35f), th.accent);
         GUI.DrawTexture(new Rect(r.x+16, r.y+16, cw-32, 70), accent);
-        GUI.Label(new Rect(r.x, r.y+28, cw, 46), th.name, St_(36, Color.white));
+        GUI.Label(new Rect(r.x, r.y+28, cw, 46), th.name, St_(namePx, Color.white));
         GUI.Label(new Rect(r.x+10, r.y+100, cw-20, 50), th.blurb, St_(16, dark, FontStyle.Normal));
         int got=0, max=th.levels.Length*3;
         for (int li=0;li<th.levels.Length;li++) got += PlayerPrefs.GetInt(StarKey(i,li),0);
         GUI.Label(new Rect(r.x, r.y+155, cw, 28), $"{th.levels.Length} 个物品 · {got}/{max}★", St_(16, new Color(.2f,.55f,.55f), FontStyle.Normal));
         if (GUI.Button(r, GUIContent.none, GUIStyle.none)) { OpenTheme(i); }
       }
-      GUI.Label(new Rect(0, h-40, w, 30), "共 4 大主题 · 24 个精美模型 · 单指清洁 · 双指旋转", St_(16, dark, FontStyle.Normal));
+      GUI.Label(new Rect(0, h-40, w, 30), "共 5 大主题 · 30 个模型 · 清洗 / 旋转分开操作", St_(16, dark, FontStyle.Normal));
       return;
     }
 
@@ -765,12 +999,13 @@ public class CleanGame : MonoBehaviour {
       if (Btn(rotR, "旋转", mode==Mode.Rotate?purple:gray, purpleH, 26, RotateIcon())) mode = Mode.Rotate;
       // Tool row (only meaningful in Clean mode; still visible but dimmed in Rotate)
       var a = new Rect(w/2-230, h-90, 220, 64); var b2 = new Rect(w/2+10, h-90, 220, 64);
+      ToolLabels(out string hardName, out string softName, out Texture2D hardIcon, out Texture2D softIcon);
       if (mode == Mode.Clean) {
-        if (Btn(a, "高压水枪", !sponge?teal:gray, tealH, 22, DropIcon())) sponge = false;
-        if (Btn(b2, "泡泡海绵", sponge?orange:gray, orangeH, 22, SpongeIcon())) sponge = true;
+        if (Btn(a, hardName, !sponge?teal:gray, tealH, 22, hardIcon)) sponge = false;
+        if (Btn(b2, softName, sponge?orange:gray, orangeH, 22, softIcon)) sponge = true;
       } else {
-        Panel(a, gray); GUI.Label(a, "高压水枪", St_(22, new Color(1,1,1,.55f)));
-        Panel(b2, gray); GUI.Label(b2, "泡泡海绵", St_(22, new Color(1,1,1,.55f)));
+        Panel(a, gray); GUI.Label(a, hardName, St_(22, new Color(1,1,1,.55f)));
+        Panel(b2, gray); GUI.Label(b2, softName, St_(22, new Color(1,1,1,.55f)));
       }
       string tip = mode == Mode.Clean
         ? "清洗模式：单指在物体上拖动清洁 · 双指开合缩放 · 右键也可旋转"

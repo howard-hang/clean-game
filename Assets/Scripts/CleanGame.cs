@@ -808,27 +808,42 @@ public class CleanGame : MonoBehaviour {
   }
 
 #if UNITY_STANDALONE || UNITY_EDITOR
-  void CapShot(string name){ UnityEngine.ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(shotDir, name)); Debug.Log("SHOT "+name); }
+  IEnumerator CapShotIE(string name){
+    yield return new WaitForEndOfFrame();
+    try {
+      var tex = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
+      tex.ReadPixels(new Rect(0,0,Screen.width,Screen.height), 0, 0); tex.Apply();
+      System.IO.Directory.CreateDirectory(shotDir);
+      System.IO.File.WriteAllBytes(System.IO.Path.Combine(shotDir, name), tex.EncodeToPNG());
+      Object.Destroy(tex); Debug.Log("SHOT "+name);
+    } catch (System.Exception e) { Debug.LogWarning("SHOT fail "+e.Message); }
+  }
+  void CapShot(string name){ StartCoroutine(CapShotIE(name)); }
   System.Collections.IEnumerator AutoScreenshotsV6() {
     autoMode = true; yield return new WaitForSeconds(1.0f);
     OpenTheme(0); StartLevel(0); mode = Mode.Clean; sponge = false;
     yield return new WaitForSeconds(0.9f);
-    CapShot("unity-v6-shot01-mode-clean.png");
-    // simulate clean briefly
+    CapShot("unity-v7-shot01-mode-clean.png");
     pointer = new Vector2(Screen.width/2f, Screen.height*0.55f); pointerDown = true; mode = Mode.Clean;
-    float end = Time.time + 2.0f; while (Time.time < end) yield return null;
-    CapShot("unity-v6-shot02-cleaning.png");
+    float endt = Time.time + 2.0f; while (Time.time < endt) yield return null;
+    CapShot("unity-v7-shot02-cleaning.png");
     pointerDown = false;
     mode = Mode.Rotate; yield return new WaitForSeconds(0.4f);
-    CapShot("unity-v6-shot03-mode-rotate.png");
-    // rotate without cleaning
+    CapShot("unity-v7-shot03-mode-rotate.png");
     for (int i=0;i<40;i++){ objYaw -= 4f; ApplyObjectRotation(); yield return null; }
-    CapShot("unity-v6-shot04-rotated-no-clean.png");
-    // show progress unchanged-ish (dirt still there) — switch back
+    CapShot("unity-v7-shot04-rotated-no-clean.png");
     mode = Mode.Clean; yield return new WaitForSeconds(0.3f);
-    CapShot("unity-v6-shot05-back-to-clean.png");
+    CapShot("unity-v7-shot05-back-to-clean.png");
+    // bathroom model showcase
+    string[] tags = {"plate","duck","soap","shampoo","cup","loofah"};
+    for (int li=0; li<tags.Length; li++) {
+      StartLevel(li); mode = Mode.Rotate;
+      for (int i=0;i<25;i++){ objYaw -= 3f; ApplyObjectRotation(); yield return null; }
+      yield return new WaitForSeconds(0.35f);
+      CapShot("unity-v7-model-"+tags[li]+".png");
+    }
     OpenTheme(1); StartLevel(0); mode = Mode.Rotate; yield return new WaitForSeconds(0.8f);
-    CapShot("unity-v6-shot06-kitchen-rotate-ui.png");
+    CapShot("unity-v7-shot06-kitchen-rotate-ui.png");
     Debug.Log("AUTO_SHOTS_DONE"); Application.Quit();
   }
 #endif

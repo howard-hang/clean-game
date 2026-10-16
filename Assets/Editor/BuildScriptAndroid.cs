@@ -1,4 +1,4 @@
-using UnityEditor;
+﻿using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -29,10 +29,10 @@ public static class BuildScriptAndroid {
   public static void Android() {
     PlayerSettings.productName = "\u6d17\u6d17\u66f4\u89e3\u538b";
     PlayerSettings.companyName = "zhanghang";
-    PlayerSettings.bundleVersion = "1.0.0";
+    PlayerSettings.bundleVersion = "1.3.0";
     AlwaysInclude();
     PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.zhanghang.cleangame");
-    PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
+    PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel25;
     PlayerSettings.Android.targetSdkVersion = (AndroidSdkVersions)34;
     PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
     PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
@@ -42,7 +42,7 @@ public static class BuildScriptAndroid {
     PlayerSettings.allowedAutorotateToPortrait = false;
     PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
     PlayerSettings.Android.useCustomKeystore = false;
-    PlayerSettings.Android.bundleVersionCode = 1;
+    PlayerSettings.Android.bundleVersionCode = 4;
     EditorUserBuildSettings.androidBuildSystem = AndroidBuildSystem.Gradle;
     EditorUserBuildSettings.buildAppBundle = false;
     EditorUserBuildSettings.androidBuildSubtarget = MobileTextureSubtarget.ASTC;
@@ -67,3 +67,5 @@ public static class BuildScriptAndroid {
     EditorApplication.Exit(r.summary.result == UnityEditor.Build.Reporting.BuildResult.Succeeded ? 0 : 1);
   }
 }
+
+

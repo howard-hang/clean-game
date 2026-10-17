@@ -1,7 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-// 洗洗更解压 v1.6 — 浴室/厨房/车库/花园 + 考古生物（Tripo v2：考古凿、霸王龙头骨）；清洗与旋转仍然互斥
+// 洗洗更解压 v1.8 — 厨房紧凑布景 kitchen_set + 餐具重做；清洗与旋转仍然互斥
 public class CleanGame : MonoBehaviour {
   class Lvl { public string name, mesh; public float tilt, yaw; public Lvl(string n,string m,float t=0,float y=0){name=n;mesh=m;tilt=t;yaw=y;} }
   class Theme {
@@ -307,6 +307,60 @@ public class CleanGame : MonoBehaviour {
   }
 
   void BuildKitchen(Transform room) {
+    // 有 kitchen_set 就用紧凑布景；缺文件时仍搭原来的方块厨房
+    var prefab = Resources.Load<GameObject>("kitchen_set");
+    if (prefab != null && prefab.GetComponentInChildren<MeshFilter>(true) != null) {
+      BuildKitchenBackdrop(room, prefab);
+      return;
+    }
+    BuildKitchenPrimitives(room);
+  }
+
+  // 小地面 + 原来的中心台座，套件放在台座后方。FOV 40，相机在 +Z。
+  void BuildKitchenBackdrop(Transform room, GameObject prefab) {
+    var floorT = Tiles(new Color(.92f,.88f,.8f), new Color(.7f,.65f,.55f), 8, false);
+    var floorM = M(Color.white, .7f, floorT); floorM.mainTextureScale = new Vector2(4,4);
+    // 比旧的 3.2 平面小一圈，只托住台座，避免和套件底面闪面
+    Prim(PrimitiveType.Plane, new Vector3(0f, -0.02f, 0f), Vector3.one * 1.15f, floorM, room, true);
+    BuildKitchenPedestal(room);
+    var set = (GameObject)Instantiate(prefab, room, false);
+    set.name = "kitchen_set";
+    var albedo = Resources.Load<Texture2D>("kitchen_set_base");
+    var mat = albedo != null ? M(Color.white, .5f, albedo) : M(new Color(.95f, .9f, .82f), .45f);
+    var rends = set.GetComponentsInChildren<Renderer>(true);
+    foreach (var r in rends) {
+      r.sharedMaterial = mat;
+      r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+      r.receiveShadows = true;
+    }
+    foreach (var c in set.GetComponentsInChildren<Collider>(true)) Destroy(c);
+    set.transform.localPosition = Vector3.zero;
+    set.transform.localRotation = Quaternion.identity;
+    set.transform.localScale = Vector3.one;
+    if (rends.Length == 0) return;
+    var b = CombinedBounds(rends);
+    // Tripo 套件薄边在 X、长边在 Z，细节朝 +X。转到 -90° 后正面朝相机。
+    if (b.size.z > b.size.x) set.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
+    b = CombinedBounds(rends);
+    const float targetWidth = 4.6f; // 略宽于台座直径 2.85，不盖住清洗物
+    float scale = targetWidth / Mathf.Max(b.size.x, 0.01f);
+    const float frontZ = -1.65f; // 正面停在台座后沿之外
+    set.transform.localScale = Vector3.one * scale;
+    set.transform.localPosition = new Vector3(-b.center.x * scale, -b.min.y * scale, frontZ - b.max.z * scale);
+  }
+
+  static Bounds CombinedBounds(Renderer[] rends) {
+    var bounds = rends[0].bounds;
+    for (int i = 1; i < rends.Length; i++) bounds.Encapsulate(rends[i].bounds);
+    return bounds;
+  }
+
+  void BuildKitchenPedestal(Transform room) {
+    Prim(PrimitiveType.Cylinder, new Vector3(0,.14f,0), new Vector3(2.85f,.14f,2.85f), M(new Color(.55f,.38f,.25f),.5f), room, true);
+    Prim(PrimitiveType.Cylinder, new Vector3(0,.30f,0), new Vector3(2.55f,.02f,2.55f), M(new Color(.9f,.55f,.3f),.7f), room);
+  }
+
+  void BuildKitchenPrimitives(Transform room) {
     var floorT = Tiles(new Color(.92f,.88f,.8f), new Color(.7f,.65f,.55f), 8, false);
     var floorM = M(Color.white, .7f, floorT); floorM.mainTextureScale = new Vector2(4,4);
     Prim(PrimitiveType.Plane, Vector3.zero, Vector3.one*3.2f, floorM, room, true);
@@ -343,8 +397,7 @@ public class CleanGame : MonoBehaviour {
       Prim(PrimitiveType.Sphere, new Vector3(x,4.9f,-2.5f), Vector3.one*.25f, Emit(new Color(1f,.9f,.7f), 1.8f), room);
     }
     // island pedestal
-    Prim(PrimitiveType.Cylinder, new Vector3(0,.14f,0), new Vector3(2.85f,.14f,2.85f), M(new Color(.55f,.38f,.25f),.5f), room, true);
-    Prim(PrimitiveType.Cylinder, new Vector3(0,.30f,0), new Vector3(2.55f,.02f,2.55f), M(new Color(.9f,.55f,.3f),.7f), room);
+    BuildKitchenPedestal(room);
   }
 
   void BuildGarage(Transform room) {

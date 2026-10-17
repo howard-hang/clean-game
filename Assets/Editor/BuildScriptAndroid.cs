@@ -29,7 +29,7 @@ public static class BuildScriptAndroid {
   public static void Android() {
     PlayerSettings.productName = "\u6d17\u6d17\u66f4\u89e3\u538b";
     PlayerSettings.companyName = "zhanghang";
-    PlayerSettings.bundleVersion = "1.5.0";
+    PlayerSettings.bundleVersion = "1.6.0";
     AlwaysInclude();
     PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.zhanghang.cleangame");
     PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel25;
@@ -42,7 +42,7 @@ public static class BuildScriptAndroid {
     PlayerSettings.allowedAutorotateToPortrait = false;
     PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
     PlayerSettings.Android.useCustomKeystore = false;
-    PlayerSettings.Android.bundleVersionCode = 6;
+    PlayerSettings.Android.bundleVersionCode = 7;
     EditorUserBuildSettings.androidBuildSystem = AndroidBuildSystem.Gradle;
     EditorUserBuildSettings.buildAppBundle = false;
     EditorUserBuildSettings.androidBuildSubtarget = MobileTextureSubtarget.ASTC;

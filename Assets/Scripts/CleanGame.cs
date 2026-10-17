@@ -1,7 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-// 洗洗更解压 v1.10 — 花园紧凑布景 garden_set + 园艺道具重做；清洗与旋转仍然互斥
+// 洗洗更解压 v1.11 — 考古紧凑布景 fossil_set + 发掘刷/凿网格；清洗与旋转仍然互斥
 public class CleanGame : MonoBehaviour {
   class Lvl { public string name, mesh; public float tilt, yaw; public Lvl(string n,string m,float t=0,float y=0){name=n;mesh=m;tilt=t;yaw=y;} }
   class Theme {
@@ -566,6 +566,79 @@ public class CleanGame : MonoBehaviour {
 
   // 发掘现场 / 标本整理区：沙地、格子网、帆布帐篷、石箱，不是浴室瓷砖
   void BuildDigSite(Transform room) {
+    // 有 fossil_set 就用紧凑布景；缺文件时仍搭原来的方块发掘现场
+    var prefab = Resources.Load<GameObject>("fossil_set");
+    if (prefab != null && prefab.GetComponentInChildren<MeshFilter>(true) != null) {
+      BuildDigSiteBackdrop(room, prefab);
+      return;
+    }
+    BuildDigSitePrimitives(room);
+  }
+
+  // 小沙地 + 原来的中心台座，套件放在台座后方。FOV 40，相机在 +Z。
+  void BuildDigSiteBackdrop(Transform room, GameObject prefab) {
+    var sand = M(Color.white, .12f, SandTex()); sand.mainTextureScale = new Vector2(2f, 2f);
+    // 比旧的 3.8 平面小一圈，只托住台座，避免和套件底面闪面
+    Prim(PrimitiveType.Plane, new Vector3(0f, -0.02f, 0f), Vector3.one * 1.15f, sand, room, true);
+    BuildDigSitePedestal(room);
+    var set = (GameObject)Instantiate(prefab, room, false);
+    set.name = "fossil_set";
+    var albedo = Resources.Load<Texture2D>("fossil_set_base");
+    var mat = albedo != null ? M(Color.white, .2f, albedo) : M(new Color(.78f, .62f, .38f), .18f);
+    var rends = set.GetComponentsInChildren<Renderer>(true);
+    foreach (var r in rends) {
+      r.sharedMaterial = mat;
+      r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+      r.receiveShadows = true;
+    }
+    foreach (var c in set.GetComponentsInChildren<Collider>(true)) Destroy(c);
+    set.transform.localPosition = Vector3.zero;
+    set.transform.localRotation = Quaternion.identity;
+    set.transform.localScale = Vector3.one;
+    if (rends.Length == 0) return;
+    var b = CombinedBounds(rends);
+    // 实测长边在 Z（约 1.0）、短边在 X（约 0.67）。帐篷、岩石和发掘坑在 -X，空沙地朝 +X。
+    // 和花园一样：长边在 Z 时绕 Y 转 90°，长边左右铺开。哪一侧更高就转到后方，空沙地朝相机。
+    // 导入若把 X 镜像，偏航符号会跟着反过来。
+    if (b.size.z > b.size.x) {
+      float yaw = TallerOnNegativeX(set) ? -90f : 90f;
+      set.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
+    }
+    b = CombinedBounds(rends);
+    const float targetWidth = 4.6f; // 略宽于台座直径 2.85，不盖住清洗物
+    float scale = targetWidth / Mathf.Max(b.size.x, 0.01f);
+    const float frontZ = -1.65f; // 正面停在台座后沿之外
+    set.transform.localScale = Vector3.one * scale;
+    set.transform.localPosition = new Vector3(-b.center.x * scale, -b.min.y * scale, frontZ - b.max.z * scale);
+  }
+
+  // 局部 X 负半边平均更高，说明帐篷和石块在 -X（和花园栅栏同一侧）
+  bool TallerOnNegativeX(GameObject set) {
+    double neg = 0, pos = 0; int nc = 0, pc = 0;
+    var filters = set.GetComponentsInChildren<MeshFilter>(true);
+    for (int f = 0; f < filters.Length; f++) {
+      var mesh = filters[f].sharedMesh; if (mesh == null) continue;
+      var v = mesh.vertices;
+      int step = Mathf.Max(1, v.Length / 2500);
+      for (int i = 0; i < v.Length; i += step) {
+        Vector3 lp = set.transform.InverseTransformPoint(filters[f].transform.TransformPoint(v[i]));
+        if (lp.x < 0f) { neg += lp.y; nc++; }
+        else { pos += lp.y; pc++; }
+      }
+    }
+    float yn = nc > 0 ? (float)(neg / nc) : 0f;
+    float yp = pc > 0 ? (float)(pos / pc) : 0f;
+    return yn >= yp;
+  }
+
+  void BuildDigSitePedestal(Transform room) {
+    // 化石放在压实的沙土基座上，高度与其它主题的展示台一致
+    Prim(PrimitiveType.Cylinder, new Vector3(0f, .14f, 0f), new Vector3(2.85f, .14f, 2.85f), M(new Color(.62f, .48f, .3f), .25f), room, true);
+    Prim(PrimitiveType.Cylinder, new Vector3(0f, .30f, 0f), new Vector3(2.55f, .02f, 2.55f), M(new Color(.82f, .68f, .42f), .35f), room);
+    Prim(PrimitiveType.Cylinder, new Vector3(0f, .31f, 0f), new Vector3(2.62f, .012f, 2.62f), M(new Color(.45f, .32f, .18f), .4f), room);
+  }
+
+  void BuildDigSitePrimitives(Transform room) {
     var sand = M(Color.white, .12f, SandTex()); sand.mainTextureScale = new Vector2(5f, 5f);
     Prim(PrimitiveType.Plane, Vector3.zero, Vector3.one * 3.8f, sand, room, true);
     var dune = M(new Color(.78f, .62f, .38f), .18f);
@@ -612,10 +685,7 @@ public class CleanGame : MonoBehaviour {
     Prim(PrimitiveType.Cube, new Vector3(2.7f, .36f, .8f), new Vector3(.08f, .7f, .6f), wood, room);
     Prim(PrimitiveType.Cube, new Vector3(3.9f, .36f, .8f), new Vector3(.08f, .7f, .6f), wood, room);
     Prim(PrimitiveType.Cube, new Vector3(3.3f, .8f, .8f), new Vector3(.7f, .06f, .4f), M(new Color(.9f, .88f, .82f), .45f), room);
-    // 化石放在压实的沙土基座上，高度与其它主题的展示台一致
-    Prim(PrimitiveType.Cylinder, new Vector3(0f, .14f, 0f), new Vector3(2.85f, .14f, 2.85f), M(new Color(.62f, .48f, .3f), .25f), room, true);
-    Prim(PrimitiveType.Cylinder, new Vector3(0f, .30f, 0f), new Vector3(2.55f, .02f, 2.55f), M(new Color(.82f, .68f, .42f), .35f), room);
-    Prim(PrimitiveType.Cylinder, new Vector3(0f, .31f, 0f), new Vector3(2.62f, .012f, 2.62f), M(new Color(.45f, .32f, .18f), .4f), room);
+    BuildDigSitePedestal(room);
   }
 
   Texture2D SandTex() {
@@ -659,27 +729,253 @@ public class CleanGame : MonoBehaviour {
     spongeObj.SetActive(false); nozzle.SetActive(false); digBrush.SetActive(false); digChisel.SetActive(false);
   }
 
-  // 考古刷 dig_brush：软毛，贴着骨面扫；考古凿 dig_chisel：刃口朝前，跟水枪同一套指向
+  // 考古刷 dig_brush：软工具，占海绵位，刷毛贴着骨面。考古凿 dig_chisel：硬工具，占水枪位，刃口朝前。
   void BuildFossilTools() {
+    digBrush = TryBuildMeshTool("dig_brush", true);
+    if (digBrush == null) digBrush = BuildPrimitiveBrush();
+    digChisel = TryBuildMeshTool("dig_chisel", false);
+    if (digChisel == null) digChisel = BuildPrimitiveChisel();
+  }
+
+  // 读 Resources 里的网格和 _base 贴图。工作端按顶点对到现在方块工具的指向；加载失败返回 null。
+  GameObject TryBuildMeshTool(string id, bool soft) {
+    var prefab = Resources.Load<GameObject>(id);
+    if (prefab == null || prefab.GetComponentInChildren<MeshFilter>(true) == null) return null;
+    var root = new GameObject(id);
+    // 朝向和尺寸写在这一层，不动导入器留在子节点上的轴转换
+    var orient = new GameObject(id + "_orient");
+    orient.transform.SetParent(root.transform, false);
+    var inst = (GameObject)Instantiate(prefab, orient.transform, false);
+    inst.name = id + "_mesh";
+    var albedo = Resources.Load<Texture2D>(id + "_base");
+    var mat = albedo != null
+      ? M(Color.white, soft ? .3f : .48f, albedo)
+      : M(soft ? new Color(.62f, .42f, .22f) : new Color(.75f, .76f, .78f), soft ? .3f : .55f, null, soft ? 0f : .35f);
+    var rends = inst.GetComponentsInChildren<Renderer>(true);
+    if (rends.Length == 0) { Destroy(root); return null; }
+    foreach (var r in rends) {
+      r.sharedMaterial = mat;
+      r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+      r.receiveShadows = true;
+    }
+    foreach (var c in inst.GetComponentsInChildren<Collider>(true)) Destroy(c);
+    if (!OrientFossilTool(orient, soft)) { Destroy(root); return null; }
+    return root;
+  }
+
+  // 刷：刷毛朝局部 -Y（和海绵一样，Y 是表面法线，靠化石的一侧）。凿：刃口朝局部 +Z（和水枪同一套 LookRotation）。
+  bool OrientFossilTool(GameObject orient, bool soft) {
+    var pts = PointsIn(orient);
+    if (pts.Count < 32) return false;
+    Vector3 center;
+    Vector3 major = PrincipalAxis(pts, out center);
+    List<Vector3> lo, hi;
+    SplitEnds(pts, center, major, .12f, out lo, out hi);
+    if (lo.Count < 8 || hi.Count < 8) return false;
+    Vector3 width = DominantPerpendicular(pts, major, center);
+    Vector3 thick = Vector3.Cross(major, width);
+    if (thick.sqrMagnitude < 1e-8f) return false;
+    thick.Normalize();
+    thick = ThicknessAwayFromRestingFace(pts, thick);
+    Vector3 srcFwd;
+    Vector3 dstFwd;
+    Vector3 dstUp;
+    const float brushLen = .78f; // 手刷长度，刷毛端贴在骨面附近
+    const float chiselLen = .92f; // 手凿长度，和原来方块凿的前后跨度接近
+    if (soft) {
+      // 刷毛那一头横截面更散，手柄更细
+      float rLo = CrossRadius(lo, major), rHi = CrossRadius(hi, major);
+      srcFwd = rHi >= rLo ? major : -major;
+      dstFwd = Vector3.down;
+      dstUp = Vector3.forward; // 离开桌面的那一面朝屏幕上方
+    } else {
+      // 刃口更扁。凿在局部 XZ 里是斜的，主轴取顶点拉出来的长轴，再转到瞄准方向
+      float tLo = MinCrossExtent(lo, major), tHi = MinCrossExtent(hi, major);
+      srcFwd = tHi <= tLo ? major : -major;
+      dstFwd = Vector3.forward;
+      dstUp = Vector3.up; // 扁的那一面对着上方，刃口横着，和方块凿一样
+    }
+    orient.transform.localRotation = AlignAxes(srcFwd, thick, dstFwd, dstUp);
+    // 凿是斜放的，渲染器包围盒会把空角也包进去。这里用变换后的顶点做紧包围盒。
+    if (!TightBounds(orient, out var b)) return false;
+    float length = soft ? b.size.y : b.size.z;
+    float scale = (soft ? brushLen : chiselLen) / Mathf.Max(length, .01f);
+    orient.transform.localScale = Vector3.one * scale;
+    if (soft) {
+      // 刷毛端（-Y）放在 y=-0.05，和原来方块刷毛同一侧
+      orient.transform.localPosition = new Vector3(-b.center.x * scale, -.05f - b.min.y * scale, -b.center.z * scale);
+    } else {
+      // 刃尖（+Z）放在 z=0.40，原来方块刃口尖约在 0.41，水枪喷射点在 0.33
+      orient.transform.localPosition = new Vector3(-b.center.x * scale, -b.center.y * scale, .40f - b.max.z * scale);
+    }
+    return true;
+  }
+
+  // 根节点还在原点时，世界坐标就是工具局部坐标
+  static bool TightBounds(GameObject root, out Bounds bounds) {
+    bool any = false;
+    bounds = new Bounds();
+    var filters = root.GetComponentsInChildren<MeshFilter>(true);
+    for (int f = 0; f < filters.Length; f++) {
+      var mesh = filters[f].sharedMesh; if (mesh == null) continue;
+      var v = mesh.vertices;
+      for (int i = 0; i < v.Length; i++) {
+        Vector3 w = filters[f].transform.TransformPoint(v[i]);
+        if (!any) { bounds = new Bounds(w, Vector3.zero); any = true; }
+        else bounds.Encapsulate(w);
+      }
+    }
+    return any;
+  }
+
+  static List<Vector3> PointsIn(GameObject root) {
+    var pts = new List<Vector3>();
+    var filters = root.GetComponentsInChildren<MeshFilter>(true);
+    for (int f = 0; f < filters.Length; f++) {
+      var mesh = filters[f].sharedMesh; if (mesh == null) continue;
+      var v = mesh.vertices;
+      for (int i = 0; i < v.Length; i++)
+        pts.Add(root.transform.InverseTransformPoint(filters[f].transform.TransformPoint(v[i])));
+    }
+    return pts;
+  }
+
+  // 协方差幂迭代，得到点云最长的轴
+  static Vector3 PrincipalAxis(List<Vector3> pts, out Vector3 center) {
+    center = Vector3.zero;
+    for (int i = 0; i < pts.Count; i++) center += pts[i];
+    center /= pts.Count;
+    Vector3 axis = new Vector3(1f, .05f, .65f).normalized;
+    for (int it = 0; it < 32; it++) {
+      Vector3 s = Vector3.zero;
+      for (int i = 0; i < pts.Count; i++) {
+        Vector3 d = pts[i] - center;
+        s += d * Vector3.Dot(d, axis);
+      }
+      if (s.sqrMagnitude < 1e-12f) break;
+      axis = s.normalized;
+    }
+    return axis;
+  }
+
+  // 去掉长轴之后，剩下最宽的那根（刃口宽度 / 刷身宽度）
+  static Vector3 DominantPerpendicular(List<Vector3> pts, Vector3 major, Vector3 center) {
+    Vector3 axis = Vector3.Cross(major, Mathf.Abs(major.y) < .85f ? Vector3.up : Vector3.right);
+    if (axis.sqrMagnitude < 1e-8f) axis = Vector3.right;
+    axis.Normalize();
+    for (int it = 0; it < 32; it++) {
+      Vector3 s = Vector3.zero;
+      for (int i = 0; i < pts.Count; i++) {
+        Vector3 d = pts[i] - center;
+        d -= major * Vector3.Dot(d, major);
+        s += d * Vector3.Dot(d, axis);
+      }
+      s -= major * Vector3.Dot(s, major);
+      if (s.sqrMagnitude < 1e-12f) break;
+      axis = s.normalized;
+    }
+    return axis;
+  }
+
+  static void SplitEnds(List<Vector3> pts, Vector3 center, Vector3 axis, float frac, out List<Vector3> lo, out List<Vector3> hi) {
+    float mn = float.MaxValue, mx = float.MinValue;
+    var proj = new float[pts.Count];
+    for (int i = 0; i < pts.Count; i++) {
+      proj[i] = Vector3.Dot(pts[i] - center, axis);
+      if (proj[i] < mn) mn = proj[i];
+      if (proj[i] > mx) mx = proj[i];
+    }
+    float span = Mathf.Max(mx - mn, 1e-4f);
+    lo = new List<Vector3>(); hi = new List<Vector3>();
+    for (int i = 0; i < pts.Count; i++) {
+      if (proj[i] <= mn + span * frac) lo.Add(pts[i]);
+      else if (proj[i] >= mx - span * frac) hi.Add(pts[i]);
+    }
+  }
+
+  static float CrossRadius(List<Vector3> pts, Vector3 axis) {
+    Vector3 c = Vector3.zero;
+    for (int i = 0; i < pts.Count; i++) c += pts[i];
+    c /= Mathf.Max(1, pts.Count);
+    float r = 0f;
+    for (int i = 0; i < pts.Count; i++) {
+      Vector3 d = pts[i] - c;
+      d -= axis * Vector3.Dot(d, axis);
+      if (d.sqrMagnitude > r) r = d.sqrMagnitude;
+    }
+    return Mathf.Sqrt(r);
+  }
+
+  // 垂直于 axis 的两个方向里，较薄的那一截有多薄
+  static float MinCrossExtent(List<Vector3> pts, Vector3 axis) {
+    Vector3 a = Vector3.Cross(axis, Mathf.Abs(axis.y) < .9f ? Vector3.up : Vector3.right).normalized;
+    Vector3 b = Vector3.Cross(axis, a).normalized;
+    float a0 = float.MaxValue, a1 = float.MinValue, b0 = float.MaxValue, b1 = float.MinValue;
+    for (int i = 0; i < pts.Count; i++) {
+      float pa = Vector3.Dot(pts[i], a), pb = Vector3.Dot(pts[i], b);
+      if (pa < a0) a0 = pa; if (pa > a1) a1 = pa;
+      if (pb < b0) b0 = pb; if (pb > b1) b1 = pb;
+    }
+    return Mathf.Min(a1 - a0, b1 - b0);
+  }
+
+  // 贴着桌面的一侧顶点更密，把厚度轴翻到离开桌面的方向
+  static Vector3 ThicknessAwayFromRestingFace(List<Vector3> pts, Vector3 thick) {
+    float mn = float.MaxValue, mx = float.MinValue;
+    for (int i = 0; i < pts.Count; i++) {
+      float t = Vector3.Dot(pts[i], thick);
+      if (t < mn) mn = t; if (t > mx) mx = t;
+    }
+    float span = Mathf.Max(mx - mn, 1e-4f);
+    int nearMin = 0, nearMax = 0;
+    for (int i = 0; i < pts.Count; i++) {
+      float t = Vector3.Dot(pts[i], thick);
+      if (t < mn + span * .18f) nearMin++;
+      if (t > mx - span * .18f) nearMax++;
+    }
+    return nearMin >= nearMax ? thick : -thick;
+  }
+
+  // 把 srcFwd/srcUp 转到 dstFwd/dstUp。srcUp 会先投到垂直于 srcFwd 的平面上。
+  static Quaternion AlignAxes(Vector3 srcFwd, Vector3 srcUp, Vector3 dstFwd, Vector3 dstUp) {
+    srcFwd.Normalize();
+    srcUp = Vector3.ProjectOnPlane(srcUp, srcFwd);
+    if (srcUp.sqrMagnitude < 1e-8f) srcUp = Vector3.Cross(srcFwd, Vector3.right);
+    srcUp.Normalize();
+    dstFwd.Normalize();
+    dstUp = Vector3.ProjectOnPlane(dstUp, dstFwd);
+    if (dstUp.sqrMagnitude < 1e-8f) dstUp = Vector3.up;
+    dstUp.Normalize();
+    return Quaternion.LookRotation(dstFwd, dstUp) * Quaternion.Inverse(Quaternion.LookRotation(srcFwd, srcUp));
+  }
+
+  GameObject BuildPrimitiveBrush() {
     var wood = M(new Color(.55f,.36f,.18f), .4f);
     var bristle = M(new Color(.93f,.84f,.62f), .15f);
     var bristleTip = M(new Color(.72f,.6f,.38f), .2f);
     var metal = M(new Color(.78f,.8f,.83f), .85f, null, .8f);
-    digBrush = new GameObject("dig_brush");
+    var go = new GameObject("dig_brush");
     // 局部 Y 贴着表面法线（和海绵一样），刷毛在靠化石的一侧
-    Prim(PrimitiveType.Cylinder, new Vector3(0f, .24f, 0f), new Vector3(.07f, .22f, .07f), wood, digBrush.transform);
-    Prim(PrimitiveType.Cylinder, new Vector3(0f, .06f, 0f), new Vector3(.09f, .05f, .09f), metal, digBrush.transform);
-    Prim(PrimitiveType.Cube, new Vector3(0f, -.01f, 0f), new Vector3(.32f, .1f, .2f), bristle, digBrush.transform);
-    Prim(PrimitiveType.Cube, new Vector3(0f, -.05f, 0f), new Vector3(.3f, .03f, .18f), bristleTip, digBrush.transform);
-    digChisel = new GameObject("dig_chisel");
-    var handle = Prim(PrimitiveType.Cylinder, new Vector3(0f, 0f, -.22f), new Vector3(.07f, .2f, .07f), wood, digChisel.transform);
+    Prim(PrimitiveType.Cylinder, new Vector3(0f, .24f, 0f), new Vector3(.07f, .22f, .07f), wood, go.transform);
+    Prim(PrimitiveType.Cylinder, new Vector3(0f, .06f, 0f), new Vector3(.09f, .05f, .09f), metal, go.transform);
+    Prim(PrimitiveType.Cube, new Vector3(0f, -.01f, 0f), new Vector3(.32f, .1f, .2f), bristle, go.transform);
+    Prim(PrimitiveType.Cube, new Vector3(0f, -.05f, 0f), new Vector3(.3f, .03f, .18f), bristleTip, go.transform);
+    return go;
+  }
+
+  GameObject BuildPrimitiveChisel() {
+    var wood = M(new Color(.55f,.36f,.18f), .4f);
+    var metal = M(new Color(.78f,.8f,.83f), .85f, null, .8f);
+    var go = new GameObject("dig_chisel");
+    var handle = Prim(PrimitiveType.Cylinder, new Vector3(0f, 0f, -.22f), new Vector3(.07f, .2f, .07f), wood, go.transform);
     handle.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-    var band = Prim(PrimitiveType.Cylinder, new Vector3(0f, 0f, -.02f), new Vector3(.085f, .03f, .085f), metal, digChisel.transform);
+    var band = Prim(PrimitiveType.Cylinder, new Vector3(0f, 0f, -.02f), new Vector3(.085f, .03f, .085f), metal, go.transform);
     band.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-    var shaft = Prim(PrimitiveType.Cylinder, new Vector3(0f, 0f, .14f), new Vector3(.035f, .14f, .035f), metal, digChisel.transform);
+    var shaft = Prim(PrimitiveType.Cylinder, new Vector3(0f, 0f, .14f), new Vector3(.035f, .14f, .035f), metal, go.transform);
     shaft.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-    Prim(PrimitiveType.Cube, new Vector3(0f, 0f, .34f), new Vector3(.13f, .02f, .14f), metal, digChisel.transform);
-    Prim(PrimitiveType.Cube, new Vector3(0f, 0f, -.4f), new Vector3(.1f, .08f, .08f), metal, digChisel.transform);
+    Prim(PrimitiveType.Cube, new Vector3(0f, 0f, .34f), new Vector3(.13f, .02f, .14f), metal, go.transform);
+    Prim(PrimitiveType.Cube, new Vector3(0f, 0f, -.4f), new Vector3(.1f, .08f, .08f), metal, go.transform);
+    return go;
   }
   ParticleSystem PS(Color c, float s0, float s1, float grav, float life, bool collide) {
     var g = new GameObject("ps"); var ps = g.AddComponent<ParticleSystem>(); ps.Stop();

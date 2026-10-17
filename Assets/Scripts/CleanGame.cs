@@ -1,7 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-// 洗洗更解压 v1.8 — 厨房紧凑布景 kitchen_set + 餐具重做；清洗与旋转仍然互斥
+// 洗洗更解压 v1.9 — 车库紧凑布景 garage_set + 工具重做；清洗与旋转仍然互斥
 public class CleanGame : MonoBehaviour {
   class Lvl { public string name, mesh; public float tilt, yaw; public Lvl(string n,string m,float t=0,float y=0){name=n;mesh=m;tilt=t;yaw=y;} }
   class Theme {
@@ -401,6 +401,53 @@ public class CleanGame : MonoBehaviour {
   }
 
   void BuildGarage(Transform room) {
+    // 有 garage_set 就用紧凑布景；缺文件时仍搭原来的方块车库
+    var prefab = Resources.Load<GameObject>("garage_set");
+    if (prefab != null && prefab.GetComponentInChildren<MeshFilter>(true) != null) {
+      BuildGarageBackdrop(room, prefab);
+      return;
+    }
+    BuildGaragePrimitives(room);
+  }
+
+  // 小地面 + 原来的中心台座，套件放在台座后方。FOV 40，相机在 +Z。
+  void BuildGarageBackdrop(Transform room, GameObject prefab) {
+    var floorM = M(Color.white, .35f, Concrete(new Color(.55f,.55f,.52f))); floorM.mainTextureScale = new Vector2(2f, 2f);
+    // 比旧的 3.2 平面小一圈，只托住台座，避免和套件底面闪面
+    Prim(PrimitiveType.Plane, new Vector3(0f, -0.02f, 0f), Vector3.one * 1.15f, floorM, room, true);
+    BuildGaragePedestal(room);
+    var set = (GameObject)Instantiate(prefab, room, false);
+    set.name = "garage_set";
+    var albedo = Resources.Load<Texture2D>("garage_set_base");
+    var mat = albedo != null ? M(Color.white, .4f, albedo) : M(new Color(.55f, .52f, .48f), .35f);
+    var rends = set.GetComponentsInChildren<Renderer>(true);
+    foreach (var r in rends) {
+      r.sharedMaterial = mat;
+      r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+      r.receiveShadows = true;
+    }
+    foreach (var c in set.GetComponentsInChildren<Collider>(true)) Destroy(c);
+    set.transform.localPosition = Vector3.zero;
+    set.transform.localRotation = Quaternion.identity;
+    set.transform.localScale = Vector3.one;
+    if (rends.Length == 0) return;
+    var b = CombinedBounds(rends);
+    // Tripo 套件薄边在 X、长边在 Z，细节朝 +X。转到 -90° 后正面朝相机。
+    if (b.size.z > b.size.x) set.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
+    b = CombinedBounds(rends);
+    const float targetWidth = 4.6f; // 略宽于台座直径 2.85，不盖住清洗物
+    float scale = targetWidth / Mathf.Max(b.size.x, 0.01f);
+    const float frontZ = -1.65f; // 正面停在台座后沿之外
+    set.transform.localScale = Vector3.one * scale;
+    set.transform.localPosition = new Vector3(-b.center.x * scale, -b.min.y * scale, frontZ - b.max.z * scale);
+  }
+
+  void BuildGaragePedestal(Transform room) {
+    Prim(PrimitiveType.Cylinder, new Vector3(0,.14f,0), new Vector3(2.85f,.14f,2.85f), M(new Color(.4f,.4f,.38f),.3f), room, true);
+    Prim(PrimitiveType.Cylinder, new Vector3(0,.30f,0), new Vector3(2.55f,.02f,2.55f), M(new Color(.9f,.7f,.2f),.6f), room);
+  }
+
+  void BuildGaragePrimitives(Transform room) {
     var floorM = M(Color.white, .35f, Concrete(new Color(.55f,.55f,.52f))); floorM.mainTextureScale = new Vector2(3,3);
     Prim(PrimitiveType.Plane, Vector3.zero, Vector3.one*3.2f, floorM, room, true);
     var brick = M(Color.white, .25f, BrickTex(new Color(.7f,.4f,.28f), new Color(.55f,.3f,.2f))); brick.mainTextureScale = new Vector2(4,2.5f);
@@ -425,8 +472,7 @@ public class CleanGame : MonoBehaviour {
     Prim(PrimitiveType.Sphere, new Vector3(0,5.2f,0), Vector3.one*.35f, Emit(new Color(1f,.85f,.55f), 2.5f), room);
     // oil drum decor
     Prim(PrimitiveType.Cylinder, new Vector3(5.2f,.8f,-2.5f), new Vector3(.9f,1.6f,.9f), M(new Color(.7f,.25f,.15f),.4f), room);
-    Prim(PrimitiveType.Cylinder, new Vector3(0,.14f,0), new Vector3(2.85f,.14f,2.85f), M(new Color(.4f,.4f,.38f),.3f), room, true);
-    Prim(PrimitiveType.Cylinder, new Vector3(0,.30f,0), new Vector3(2.55f,.02f,2.55f), M(new Color(.9f,.7f,.2f),.6f), room);
+    BuildGaragePedestal(room);
     // caution stripes
     Prim(PrimitiveType.Cube, new Vector3(0,.32f,1.4f), new Vector3(2.2f,.02f,.15f), M(new Color(.95f,.8f,.15f),.4f), room);
   }

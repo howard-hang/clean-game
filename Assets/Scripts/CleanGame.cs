@@ -1,7 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-// 洗洗更解压 v1.9 — 车库紧凑布景 garage_set + 工具重做；清洗与旋转仍然互斥
+// 洗洗更解压 v1.10 — 花园紧凑布景 garden_set + 园艺道具重做；清洗与旋转仍然互斥
 public class CleanGame : MonoBehaviour {
   class Lvl { public string name, mesh; public float tilt, yaw; public Lvl(string n,string m,float t=0,float y=0){name=n;mesh=m;tilt=t;yaw=y;} }
   class Theme {
@@ -478,6 +478,54 @@ public class CleanGame : MonoBehaviour {
   }
 
   void BuildGarden(Transform room) {
+    // 有 garden_set 就用紧凑布景；缺文件时仍搭原来的方块花园
+    var prefab = Resources.Load<GameObject>("garden_set");
+    if (prefab != null && prefab.GetComponentInChildren<MeshFilter>(true) != null) {
+      BuildGardenBackdrop(room, prefab);
+      return;
+    }
+    BuildGardenPrimitives(room);
+  }
+
+  // 小草地 + 原来的中心台座，套件放在台座后方。FOV 40，相机在 +Z。
+  void BuildGardenBackdrop(Transform room, GameObject prefab) {
+    var grass = M(Color.white, .15f, GrassTex()); grass.mainTextureScale = new Vector2(2f, 2f);
+    // 比旧的 3.5 平面小一圈，只托住台座，避免和套件底面闪面
+    Prim(PrimitiveType.Plane, new Vector3(0f, -0.02f, 0f), Vector3.one * 1.15f, grass, room, true);
+    BuildGardenPedestal(room);
+    var set = (GameObject)Instantiate(prefab, room, false);
+    set.name = "garden_set";
+    var albedo = Resources.Load<Texture2D>("garden_set_base");
+    var mat = albedo != null ? M(Color.white, .25f, albedo) : M(new Color(.35f, .62f, .32f), .2f);
+    var rends = set.GetComponentsInChildren<Renderer>(true);
+    foreach (var r in rends) {
+      r.sharedMaterial = mat;
+      r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+      r.receiveShadows = true;
+    }
+    foreach (var c in set.GetComponentsInChildren<Collider>(true)) Destroy(c);
+    set.transform.localPosition = Vector3.zero;
+    set.transform.localRotation = Quaternion.identity;
+    set.transform.localScale = Vector3.one;
+    if (rends.Length == 0) return;
+    var b = CombinedBounds(rends);
+    // 实测长边在 Z（约 1.0）、短边在 X（约 0.42）。栅栏、树和拱门在 -X，空草地朝 +X。
+    // 绕 Y 转 -90° 后长边左右铺开，空地朝相机，栅栏到后方。
+    if (b.size.z > b.size.x) set.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
+    b = CombinedBounds(rends);
+    const float targetWidth = 4.6f; // 略宽于台座直径 2.85，不盖住清洗物
+    float scale = targetWidth / Mathf.Max(b.size.x, 0.01f);
+    const float frontZ = -1.65f; // 正面停在台座后沿之外
+    set.transform.localScale = Vector3.one * scale;
+    set.transform.localPosition = new Vector3(-b.center.x * scale, -b.min.y * scale, frontZ - b.max.z * scale);
+  }
+
+  void BuildGardenPedestal(Transform room) {
+    Prim(PrimitiveType.Cylinder, new Vector3(0,.14f,0), new Vector3(2.85f,.14f,2.85f), M(new Color(.55f,.48f,.38f),.4f), room, true);
+    Prim(PrimitiveType.Cylinder, new Vector3(0,.30f,0), new Vector3(2.55f,.02f,2.55f), M(new Color(.45f,.75f,.4f),.5f), room);
+  }
+
+  void BuildGardenPrimitives(Transform room) {
     var grass = M(Color.white, .15f, GrassTex()); grass.mainTextureScale = new Vector2(4,4);
     Prim(PrimitiveType.Plane, Vector3.zero, Vector3.one*3.5f, grass, room, true);
     // fence back
@@ -497,8 +545,7 @@ public class CleanGame : MonoBehaviour {
     // stone path ring
     var stone = M(Color.white, .4f, Concrete(new Color(.65f,.62f,.55f)));
     Prim(PrimitiveType.Cylinder, new Vector3(0,.02f,0), new Vector3(3.2f,.03f,3.2f), stone, room, true);
-    Prim(PrimitiveType.Cylinder, new Vector3(0,.14f,0), new Vector3(2.85f,.14f,2.85f), M(new Color(.55f,.48f,.38f),.4f), room, true);
-    Prim(PrimitiveType.Cylinder, new Vector3(0,.30f,0), new Vector3(2.55f,.02f,2.55f), M(new Color(.45f,.75f,.4f),.5f), room);
+    BuildGardenPedestal(room);
     // flower beds
     for (int i=0;i<5;i++) {
       float a=i/5f*Mathf.PI*2;

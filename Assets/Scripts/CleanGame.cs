@@ -1,7 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-// 洗洗更解压 v1.5 — 浴室/厨房/车库/花园 + 考古生物（Tripo 化石网格）；清洗与旋转仍然互斥
+// 洗洗更解压 v1.6 — 浴室/厨房/车库/花园 + 考古生物（Tripo v2：考古凿、霸王龙头骨）；清洗与旋转仍然互斥
 public class CleanGame : MonoBehaviour {
   class Lvl { public string name, mesh; public float tilt, yaw; public Lvl(string n,string m,float t=0,float y=0){name=n;mesh=m;tilt=t;yaw=y;} }
   class Theme {
